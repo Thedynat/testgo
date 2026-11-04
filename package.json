@@ -1,0 +1,14 @@
+{
+  "name": "testgo",
+  "version": "1.0.0",
+  "description": "Exámenes en el aula con control de salidas, importación desde Word/PDF y exportación a Markdown/PDF",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node servidor/servidor.js",
+    "test": "node --test \"pruebas/*.test.js\""
+  }
+}
