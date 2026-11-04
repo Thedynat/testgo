@@ -1,6 +1,6 @@
 import { profesor as api, MODO } from './api.js';
 import * as N from './nucleo.js';
-import { $, $$, h, vaciar, marca, notificar, notificarError, dialogo, confirmar, ocupado, descargar, relojTexto, haceTexto, icono } from './comun.js';
+import { $, $$, h, vaciar, marca, notificar, notificarError, dialogo, confirmar, ocupado, descargar, relojTexto, haceTexto, icono, comprimirImagen } from './comun.js';
 import { leerArchivo, leerTexto, analizar, promptIA, leerRespuestaIA, pareceFormatoIA } from './importar.js';
 import { markdownIntento, pdfIntento, zipTodos } from './exportar.js';
 
@@ -26,6 +26,7 @@ async function arrancar() {
 function pintarNav() {
   vaciar(nav,
     h('a', { class: 'enlace-nav', href: '#/', 'data-ruta': 'lista' }, 'Exámenes'),
+    api.guardarCentro ? h('a', { class: 'enlace-nav', href: '#/centro', 'data-ruta': 'centro' }, 'Centro') : null,
     MODO === 'servidor' ? h('button', { class: 'boton fantasma mini', onclick: cambiarPassword }, 'Contraseña') : h('span', { class: 'pequeno suave', style: { alignSelf: 'center', padding: '0 8px' } }, sesion.email),
     h('button', { class: 'boton fantasma mini', onclick: async () => {
       await api.salir().catch(() => {});
@@ -167,8 +168,9 @@ function mostrar() {
   limpiezaVista = () => {};
   $$('.dialogo-cajon').forEach(d => d.remove());
   const [seccion, E, pestana] = location.hash.replace(/^#\/?/, '').split('/');
-  $$('#nav [data-ruta]').forEach(a => a.classList.toggle('activo', a.dataset.ruta === (seccion === 'examen' ? 'examen' : 'lista')));
+  $$('#nav [data-ruta]').forEach(a => a.classList.toggle('activo', a.dataset.ruta === (seccion === 'examen' ? 'examen' : seccion === 'centro' ? 'centro' : 'lista')));
   if (seccion === 'examen' && E) return vistaExamen(E, PESTANAS[pestana] ? pestana : 'preguntas');
+  if (seccion === 'centro' && api.guardarCentro) return vistaCentro();
   vistaLista();
 }
 
@@ -331,6 +333,68 @@ async function borrarExamen(ex, boton, despues) {
   });
 }
 
+// ---------- Datos del centro (nombre y logo) ----------
+
+// Lo que necesitan las exportaciones: el centro (para la cabecera) y cómo bajar las imágenes
+async function opcionesExportar() {
+  let centro = null;
+  try {
+    centro = await api.centro?.();
+  } catch {}
+  return { centro, urlImagen: api.urlImagen };
+}
+
+async function vistaCentro() {
+  document.title = 'TestGO · Centro';
+  vaciar(app, h('div', { class: 'tarjeta esqueleto', style: { height: '200px' } }));
+  let centro;
+  try {
+    centro = await api.centro();
+  } catch (e) {
+    return vaciar(app, h('div', { class: 'aviso peligro' }, e.message));
+  }
+  const nombre = h('input', { type: 'text', maxlength: 150, value: centro.nombre, placeholder: 'IES Ejemplo' });
+  const vista = h('div', { class: 'vista-centro' });
+  const zonaLogo = h('div', { class: 'fila' });
+  const pintar = () => {
+    vaciar(vista,
+      centro.logo ? h('img', { src: api.urlImagen(centro.logo), alt: '' }) : h('span', { class: 'sin-logo' }, icono('escuela')),
+      h('span', {}, nombre.value || 'Nombre del centro'),
+    );
+    const entrada = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async e => {
+      const archivo = e.target.files[0];
+      if (!archivo) return;
+      await ocupado(null, async () => {
+        centro.logo = await api.subirImagen(await comprimirImagen(archivo, 600));
+      });
+      pintar();
+    } });
+    vaciar(zonaLogo, entrada,
+      h('button', { class: 'boton', type: 'button', onclick: () => entrada.click() }, icono('imagen'), centro.logo ? 'Cambiar logo' : 'Subir logo'),
+      centro.logo ? h('button', { class: 'boton fantasma peligro', type: 'button', onclick: () => ((centro.logo = null), pintar()) }, 'Quitar logo') : null,
+    );
+  };
+  nombre.addEventListener('input', pintar);
+  pintar();
+
+  vaciar(app,
+    h('div', { class: 'titulo-seccion', style: { marginTop: 0 } }, h('div', {}, h('h1', { style: { margin: 0 } }, 'Tu centro'), h('p', { class: 'suave', style: { margin: '4px 0 0' } }, 'El nombre y el logo salen en la entrada de los alumnos, en sus exámenes y en los PDF.'))),
+    h('section', { class: 'tarjeta ajustes-seccion' },
+      h('div', {}, h('h3', {}, 'Nombre y logo'), h('p', { class: 'suave pequeno', style: { margin: 0 } }, 'Mejor un logo en PNG con fondo transparente o blanco.')),
+      h('div', { class: 'pila' },
+        campo('Nombre del centro', nombre),
+        h('div', { class: 'campo' }, h('span', {}, 'Logo'), zonaLogo),
+        h('div', { class: 'campo' }, h('span', {}, 'Así lo verán los alumnos'), vista),
+        h('div', {}, h('button', { class: 'boton primario', onclick: e => ocupado(e.currentTarget, async () => {
+          centro = await api.guardarCentro({ nombre: nombre.value, logo: centro.logo });
+          notificar('Datos del centro guardados');
+          pintar();
+        }) }, 'Guardar')),
+      ),
+    ),
+  );
+}
+
 // ---------- Página de un examen ----------
 
 async function vistaExamen(E, pestana) {
@@ -407,7 +471,7 @@ async function vistaExamen(E, pestana) {
     migaTitulo.textContent = x.titulo;
     vaciar(chips, x.abierto ? h('span', { class: 'chip exito' }, 'Abierto') : h('span', { class: 'chip' }, 'Cerrado'));
     const puntos = x.preguntas.reduce((s, p) => s + p.puntos, 0);
-    datos.textContent = `${plural(x.preguntas.length, 'pregunta', 'preguntas')} · ${plural(puntos, 'punto', 'puntos')} · ${x.duracion} min${x.alumnos ? ` · ${plural(x.alumnos, 'alumno', 'alumnos')}` : ''}`;
+    datos.textContent = `${x.asignatura ? `${x.asignatura} · ` : ''}${plural(x.preguntas.length, 'pregunta', 'preguntas')} · ${plural(puntos, 'punto', 'puntos')} · ${x.duracion} min${x.alumnos ? ` · ${plural(x.alumnos, 'alumno', 'alumnos')}` : ''}`;
     codigo.textContent = x.codigo;
     botonAbrir.className = `boton ${x.abierto ? '' : 'primario'}`;
     vaciar(botonAbrir, x.abierto ? [icono('candado'), 'Cerrar examen'] : [icono('directo'), 'Abrir examen']);
@@ -547,7 +611,8 @@ function pestanaPreguntas(ctx, contenido) {
   };
 
   const anadir = tipo => {
-    borrador.preguntas.push(N.limpiarPregunta({ tipo, opciones: tipo === 'test' ? ['', '', '', ''] : undefined }));
+    const inicial = { tipo, opciones: tipo === 'test' || tipo === 'multiple' ? ['', '', '', ''] : undefined, pares: tipo === 'relacionar' ? [{}, {}, {}] : undefined };
+    borrador.preguntas.push(N.limpiarPregunta(inicial));
     pintar();
     ctx.programar();
     const ultima = lista.lastElementChild;
@@ -569,11 +634,7 @@ function pestanaPreguntas(ctx, contenido) {
       cabecera,
       h('div', { class: 'fila' },
         botonImportar(),
-        h('div', { class: 'grupo-botones' },
-          h('button', { class: 'boton', onclick: () => anadir('test') }, icono('mas'), 'Test'),
-          h('button', { class: 'boton', onclick: () => anadir('corta') }, 'Corta'),
-          h('button', { class: 'boton', onclick: () => anadir('desarrollo') }, 'Desarrollo'),
-        ),
+        menuAnadir(anadir),
       ),
     ),
     ctx.ex.alumnos ? h('div', { class: 'aviso amarillo pequeno', style: { marginBottom: '14px' } }, `Ya hay ${plural(ctx.ex.alumnos, 'alumno', 'alumnos')} en este examen. Puedes corregir textos y soluciones (las notas se recalculan), pero no quitar preguntas ni opciones.`) : null,
@@ -581,6 +642,31 @@ function pestanaPreguntas(ctx, contenido) {
     lista,
   );
   pintar();
+}
+
+const DESCRIPCION_TIPO = {
+  test: 'Una respuesta correcta entre varias',
+  vf: 'Una afirmación verdadera o falsa',
+  multiple: 'Varias respuestas correctas',
+  corta: 'Una palabra o cifra que se corrige sola',
+  numerica: 'Un número con un margen de error (±)',
+  relacionar: 'Unir elementos de dos columnas',
+  desarrollo: 'Texto libre, con criterios de corrección',
+};
+
+// Menú desplegable para añadir una pregunta de cualquier tipo
+function menuAnadir(anadir) {
+  const menu = h('details', { class: 'menu' },
+    h('summary', { class: 'boton primario' }, icono('mas'), 'Añadir pregunta'),
+    h('div', { class: 'menu-lista' }, N.TIPOS.map(t =>
+      h('button', { type: 'button', onclick: () => {
+        menu.open = false;
+        anadir(t);
+      } }, h('b', {}, N.NOMBRE_TIPO[t]), h('span', {}, DESCRIPCION_TIPO[t])))),
+  );
+  // Se cierra al pulsar fuera
+  document.addEventListener('click', e => menu.open && !menu.contains(e.target) && (menu.open = false));
+  return menu;
 }
 
 // ---------- Pestaña: ajustes ----------
@@ -607,6 +693,7 @@ function pestanaAjustes(ctx, contenido) {
   vaciar(contenido, h('div', { class: 'pila' },
     seccion('General', 'Lo que ven los alumnos al entrar.',
       campo('Título', entrada('titulo', { type: 'text', maxlength: 200 })),
+      campo('Asignatura o módulo', entrada('asignatura', { type: 'text', maxlength: 120, placeholder: 'Montaje y Mantenimiento de Equipos' }), 'Sale en la pantalla del alumno y en los PDF, junto al nombre y el logo del centro.'),
       h('div', { class: 'rejilla', style: { gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' } },
         campo('Duración (minutos)', entrada('duracion', { type: 'number', min: 1, max: 600 }, Number)),
         campo('Preguntas por alumno', entrada('numPreguntas', { type: 'number', min: 0, max: 500 }, Number), '0 = todas. Si pones menos, a cada alumno le tocan unas al azar.'),
@@ -619,6 +706,7 @@ function pestanaAjustes(ctx, contenido) {
     seccion('Control antichuleta', 'Se registra cada vez que el alumno sale del examen.',
       campo('Bloquear tras salir', entrada('maxSalidas', { type: 'number', min: 0, max: 50 }, Number), 'Número de salidas de la pantalla. 0 = no bloquear nunca.'),
       interruptor('barajar', 'Barajar preguntas y opciones', 'Cada alumno las ve en un orden distinto.'),
+      interruptor('marcaAgua', 'Marca de agua con el nombre y la fecha', 'El nombre del alumno y la fecha salen de fondo en todo el examen: si alguien hace una foto o una captura, se sabe de quién es.'),
     ),
     seccion('Código de acceso', 'Si el código se ha difundido, genera otro. Los que ya están dentro siguen.',
       h('div', { class: 'fila' },
@@ -802,7 +890,7 @@ function pestanaResultados(ctx, contenido) {
     const texto = etiqueta.textContent;
     await ocupado(boton, async () => {
       const completos = await api.intentosCompletos(E);
-      const zip = await zipTodos(ctx.ex, completos, (n, total) => (etiqueta.textContent = `Generando ${n} de ${total}…`));
+      const zip = await zipTodos(ctx.ex, completos, (n, total) => (etiqueta.textContent = `Generando ${n} de ${total}…`), await opcionesExportar());
       descargar(`${N.nombreArchivo(ctx.ex.titulo)}-examenes.zip`, zip);
     });
     etiqueta.textContent = texto;
@@ -841,7 +929,8 @@ function pestanaResultados(ctx, contenido) {
         if (!d) continue;
         vistas++;
         if (d.estado === 'blanco') blanco++;
-        if (d.estado === 'correcta' || (d.estado === 'manual' && d.puntos >= d.max)) bien++;
+        // Las parciales cuentan por la parte acertada
+        if (d.max > 0 && (d.estado === 'correcta' || d.estado === 'parcial' || d.estado === 'manual')) bien += Math.max(0, d.puntos) / d.max;
         puntos += d.puntos;
       }
       return { p, i, vistas, blanco, acierto: vistas ? bien / vistas : null, media: vistas ? puntos / vistas : null };
@@ -904,7 +993,14 @@ function pestanaResultados(ctx, contenido) {
 function editorPregunta(p, i, total, { alCambiar, alRehacer, alMover, alBorrar, alDescartar, alDuplicar, alAnadirApartado, alCambiarContexto = () => {}, numero, primeroDelGrupo = true }) {
   const cuerpo = h('div', { class: 'pila' });
   const tipo = h('select', { value: p.tipo, 'aria-label': 'Tipo de pregunta', onchange: e => {
-    Object.assign(p, N.limpiarPregunta({ ...p, tipo: e.target.value, opciones: p.opciones?.length ? p.opciones : ['', '', '', ''] }));
+    const nuevo = e.target.value;
+    const base = { ...p, tipo: nuevo, opciones: p.opciones?.length && p.tipo !== 'vf' ? p.opciones : ['', '', '', ''] };
+    if (nuevo === 'test' && p.correctas?.length) base.correcta = p.correctas[0];
+    if (nuevo === 'relacionar' && !p.pares?.length) base.pares = [{}, {}, {}];
+    // Se quitan los datos del tipo anterior (correctas, pares...) para que no se guarden
+    const limpio = N.limpiarPregunta(base);
+    for (const clave of Object.keys(p)) if (!(clave in limpio) && clave !== 'avisos' && clave !== 'descartada') delete p[clave];
+    Object.assign(p, limpio);
     alRehacer();
   } }, N.TIPOS.map(t => h('option', { value: t }, N.NOMBRE_TIPO[t])));
 
@@ -917,46 +1013,9 @@ function editorPregunta(p, i, total, { alCambiar, alRehacer, alMover, alBorrar, 
   enunciado.addEventListener('input', ajustar);
   requestAnimationFrame(ajustar);
 
-  if (p.tipo === 'test') {
-    const pintarOpciones = () => {
-      vaciar(cuerpo,
-        p.opciones.map((o, j) =>
-          h('div', { class: `opcion-editor ${p.correcta === j ? 'correcta' : ''}` },
-            h('input', { type: 'radio', name: `correcta-${p.id}`, checked: p.correcta === j, title: 'Respuesta correcta', 'aria-label': `Marcar la opción ${j + 1} como correcta`, onchange: () => {
-              p.correcta = j;
-              pintarOpciones();
-              alCambiar();
-            } }),
-            h('input', { type: 'text', value: o, placeholder: `Opción ${String.fromCharCode(97 + j)}`, oninput: e => ((p.opciones[j] = e.target.value), alCambiar()) }),
-            h('button', { class: 'boton fantasma mini', type: 'button', title: 'Quitar opción', 'aria-label': 'Quitar opción', onclick: () => {
-              p.opciones.splice(j, 1);
-              if (p.correcta === j) p.correcta = null;
-              else if (p.correcta > j) p.correcta -= 1;
-              pintarOpciones();
-              alCambiar();
-            } }, icono('papelera')),
-          ),
-        ),
-        h('div', { class: 'fila entre' },
-          p.opciones.length < 10 ? h('button', { class: 'boton fantasma mini', type: 'button', onclick: () => {
-            p.opciones.push('');
-            pintarOpciones();
-            alCambiar();
-            $$('.opcion-editor input[type=text]', cuerpo).at(-1)?.focus();
-          } }, icono('mas'), 'Añadir opción') : h('span'),
-          h('label', { class: 'casilla pequeno suave' }, h('input', { type: 'checkbox', checked: p.fijarOpciones, onchange: e => ((p.fijarOpciones = e.target.checked), alCambiar()) }), 'No barajar estas opciones'),
-        ),
-        p.correcta === null ? h('p', { class: 'pequeno', style: { color: 'var(--aviso)', margin: 0 } }, 'Marca el círculo de la respuesta correcta.') : null,
-      );
-    };
-    pintarOpciones();
-  } else if (p.tipo === 'corta') {
-    cuerpo.append(campo('Respuestas aceptadas (una por línea)',
-      h('textarea', { rows: 2, value: p.respuestas.join('\n'), oninput: e => ((p.respuestas = e.target.value.split('\n').map(s => s.trim()).filter(Boolean)), alCambiar()) }),
-      'No se distinguen mayúsculas, tildes ni espacios. Si la dejas vacía, se corrige a mano.'));
-  } else {
-    cuerpo.append(h('p', { class: 'pequeno suave', style: { margin: 0 } }, 'Se corrige a mano desde la pestaña Resultados.'));
-  }
+  cuerpoPregunta(p, cuerpo, alCambiar);
+  const zonaImagen = h('div');
+  editorImagen(p, zonaImagen, alCambiar);
 
   const avisos = p.avisos?.length ? h('div', { class: 'aviso amarillo pequeno' }, p.avisos.join(' ')) : null;
 
@@ -990,8 +1049,202 @@ function editorPregunta(p, i, total, { alCambiar, alRehacer, alMover, alBorrar, 
     avisos,
     contexto,
     enunciado,
+    zonaImagen,
     cuerpo,
   );
+}
+
+// Lista editable de opciones. marcar: 'una' (radio, test) o 'varias' (casillas, varias correctas)
+function editorOpciones(p, cuerpo, alCambiar, marcar) {
+  const esCorrecta = j => (marcar === 'una' ? p.correcta === j : p.correctas.includes(j));
+  const pintar = () => {
+    vaciar(cuerpo,
+      p.opciones.map((o, j) =>
+        h('div', { class: `opcion-editor ${esCorrecta(j) ? 'correcta' : ''}` },
+          h('input', {
+            type: marcar === 'una' ? 'radio' : 'checkbox', name: `correcta-${p.id}`, checked: esCorrecta(j),
+            title: 'Respuesta correcta', 'aria-label': `Marcar la opción ${j + 1} como correcta`,
+            onchange: e => {
+              if (marcar === 'una') p.correcta = j;
+              else p.correctas = e.target.checked ? [...new Set([...p.correctas, j])].sort((x, y) => x - y) : p.correctas.filter(x => x !== j);
+              pintar();
+              alCambiar();
+            },
+          }),
+          h('input', { type: 'text', value: o, placeholder: `Opción ${String.fromCharCode(97 + j)}`, oninput: e => ((p.opciones[j] = e.target.value), alCambiar()) }),
+          h('button', { class: 'boton fantasma mini', type: 'button', title: 'Quitar opción', 'aria-label': 'Quitar opción', onclick: () => {
+            p.opciones.splice(j, 1);
+            if (marcar === 'una') p.correcta = p.correcta === j ? null : p.correcta > j ? p.correcta - 1 : p.correcta;
+            else p.correctas = p.correctas.filter(x => x !== j).map(x => (x > j ? x - 1 : x));
+            pintar();
+            alCambiar();
+          } }, icono('papelera')),
+        ),
+      ),
+      h('div', { class: 'fila entre' },
+        p.opciones.length < 10 ? h('button', { class: 'boton fantasma mini', type: 'button', onclick: () => {
+          p.opciones.push('');
+          pintar();
+          alCambiar();
+          $$('.opcion-editor input[type=text]', cuerpo).at(-1)?.focus();
+        } }, icono('mas'), 'Añadir opción') : h('span'),
+        h('label', { class: 'casilla pequeno suave' }, h('input', { type: 'checkbox', checked: p.fijarOpciones, onchange: e => ((p.fijarOpciones = e.target.checked), alCambiar()) }), 'No barajar estas opciones'),
+      ),
+      marcar === 'una' && p.correcta === null ? h('p', { class: 'pequeno', style: { color: 'var(--aviso)', margin: 0 } }, 'Marca el círculo de la respuesta correcta.') : null,
+      marcar === 'varias' ? h('p', { class: 'pequeno suave', style: { margin: 0 } }, 'Marca todas las correctas. Cada correcta que elija el alumno suma y cada incorrecta resta (sin bajar de 0).') : null,
+    );
+  };
+  pintar();
+}
+
+// El cuerpo del editor según el tipo de pregunta
+function cuerpoPregunta(p, cuerpo, alCambiar) {
+  if (p.tipo === 'test') return editorOpciones(p, cuerpo, alCambiar, 'una');
+  if (p.tipo === 'multiple') return editorOpciones(p, cuerpo, alCambiar, 'varias');
+
+  if (p.tipo === 'vf') {
+    const pintar = () => vaciar(cuerpo,
+      h('div', { class: 'opciones-vf-editor' }, N.OPCIONES_VF.map((texto, j) =>
+        h('label', { class: `opcion-editor-vf ${p.correcta === j ? 'correcta' : ''}` },
+          h('input', { type: 'radio', name: `correcta-${p.id}`, checked: p.correcta === j, onchange: () => {
+            p.correcta = j;
+            pintar();
+            alCambiar();
+          } }),
+          texto,
+        ))),
+      p.correcta === null ? h('p', { class: 'pequeno', style: { color: 'var(--aviso)', margin: 0 } }, 'Marca si la afirmación es verdadera o falsa.') : null,
+    );
+    return pintar();
+  }
+
+  if (p.tipo === 'corta') {
+    return cuerpo.append(campo('Respuestas aceptadas (una por línea)',
+      h('textarea', { rows: 2, value: p.respuestas.join('\n'), oninput: e => ((p.respuestas = e.target.value.split('\n').map(s => s.trim()).filter(Boolean)), alCambiar()) }),
+      'No se distinguen mayúsculas, tildes ni espacios. Si la dejas vacía, se corrige a mano.'));
+  }
+
+  if (p.tipo === 'numerica') {
+    const rango = h('p', { class: 'pequeno suave', style: { margin: 0 } });
+    const pintarRango = () => {
+      const r = N.rangoNumerica(p);
+      rango.textContent = r ? `Se dará por buena cualquier respuesta entre ${N.numero(r[0], 6)} y ${N.numero(r[1], 6)}${p.unidad ? ` ${p.unidad}` : ''}.` : 'Escribe la respuesta correcta.';
+    };
+    const cambio = () => (pintarRango(), alCambiar());
+    const valor = h('input', { type: 'text', inputmode: 'decimal', value: p.valor === null ? '' : String(p.valor).replace('.', ','), placeholder: '230', oninput: e => {
+      const n = N.leerNumero(e.target.value);
+      p.valor = e.target.value.trim() && Number.isFinite(n) ? n : null;
+      cambio();
+    } });
+    const tolerancia = h('input', { type: 'number', min: 0, step: 'any', value: p.tolerancia, oninput: e => ((p.tolerancia = N.acotar(e.target.value, 0, 0, 1e9)), cambio()) });
+    const modo = h('select', { value: p.modoTolerancia, onchange: e => ((p.modoTolerancia = e.target.value), cambio()) },
+      h('option', { value: '%' }, '% del valor'), h('option', { value: 'abs' }, 'unidades'));
+    const unidad = h('input', { type: 'text', maxlength: 20, value: p.unidad, placeholder: 'V, Ω, GB…', oninput: e => ((p.unidad = e.target.value.trim()), cambio()) });
+    cuerpo.append(
+      h('div', { class: 'rejilla', style: { gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' } },
+        campo('Respuesta correcta', valor),
+        campo('Margen (±)', h('div', { class: 'fila', style: { flexWrap: 'nowrap' } }, tolerancia, modo)),
+        campo('Unidad (opcional)', unidad),
+      ),
+      rango,
+    );
+    return pintarRango();
+  }
+
+  if (p.tipo === 'relacionar') {
+    const pintar = () => vaciar(cuerpo,
+      h('div', { class: 'cabecera-pares pequeno suave' }, h('span', {}, 'Columna izquierda'), h('span', {}, 'Su pareja (derecha)'), h('span')),
+      p.pares.map((par, j) =>
+        h('div', { class: 'par-editor' },
+          h('input', { type: 'text', value: par.izq, placeholder: `Elemento ${j + 1}`, oninput: e => ((par.izq = e.target.value), alCambiar()) }),
+          h('input', { type: 'text', value: par.der, placeholder: 'Su pareja', oninput: e => ((par.der = e.target.value), alCambiar()) }),
+          h('button', { class: 'boton fantasma mini', type: 'button', title: 'Quitar pareja', 'aria-label': 'Quitar pareja', onclick: () => {
+            p.pares.splice(j, 1);
+            p.ordenDerecha = N.limpiarPregunta({ ...p, ordenDerecha: null }).ordenDerecha;
+            pintar();
+            alCambiar();
+          } }, icono('papelera')),
+        ),
+      ),
+      h('div', { class: 'fila entre' },
+        p.pares.length < 20 ? h('button', { class: 'boton fantasma mini', type: 'button', onclick: () => {
+          p.pares.push({ izq: '', der: '' });
+          p.ordenDerecha = N.limpiarPregunta({ ...p, ordenDerecha: null }).ordenDerecha;
+          pintar();
+          alCambiar();
+          $$('.par-editor input', cuerpo).at(-2)?.focus();
+        } }, icono('mas'), 'Añadir pareja') : h('span'),
+        h('span', { class: 'pequeno suave' }, 'El alumno verá la columna derecha desordenada. Cada pareja acertada suma su parte.'),
+      ),
+    );
+    return pintar();
+  }
+
+  // Desarrollo: criterios de corrección (rúbrica), opcionales
+  const pintar = () => {
+    const suma = p.criterios.reduce((s, c) => s + Number(c.puntos || 0), 0);
+    vaciar(cuerpo,
+      h('div', { class: 'fila entre' },
+        h('b', { class: 'pequeno' }, 'Criterios de corrección'),
+        p.criterios.length ? h('span', { class: `pequeno ${Math.abs(suma - p.puntos) > 0.001 ? 'texto-aviso' : 'suave'}` }, `Suman ${N.numero(suma)} de ${N.numero(p.puntos)} puntos`) : null,
+      ),
+      p.criterios.length ? null : h('p', { class: 'pequeno suave', style: { margin: 0 } }, 'Opcional. Si añades criterios, al corregir solo tendrás que marcar los que cumple el alumno y la nota se calcula sola.'),
+      p.criterios.map((c, j) =>
+        h('div', { class: 'criterio-editor' },
+          h('input', { type: 'text', value: c.texto, placeholder: 'Menciona las precauciones de seguridad', oninput: e => ((c.texto = e.target.value), alCambiar()) }),
+          h('input', { type: 'number', min: 0, step: 0.25, value: c.puntos, 'aria-label': 'Puntos del criterio', oninput: e => {
+            c.puntos = N.acotar(e.target.value, 0, 0, 100);
+            alCambiar();
+          }, onchange: pintar }),
+          h('button', { class: 'boton fantasma mini', type: 'button', title: 'Quitar criterio', 'aria-label': 'Quitar criterio', onclick: () => {
+            p.criterios.splice(j, 1);
+            pintar();
+            alCambiar();
+          } }, icono('papelera')),
+        ),
+      ),
+      h('div', {}, h('button', { class: 'boton fantasma mini', type: 'button', onclick: () => {
+        p.criterios.push({ texto: '', puntos: p.criterios.length ? 0.5 : p.puntos });
+        pintar();
+        alCambiar();
+        $$('.criterio-editor input[type=text]', cuerpo).at(-1)?.focus();
+      } }, icono('mas'), 'Añadir criterio')),
+    );
+  };
+  pintar();
+}
+
+// Imagen del enunciado: se reduce en el navegador antes de subirla
+function editorImagen(p, zona, alCambiar) {
+  const pintar = () => {
+    const entrada = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async e => {
+      const archivo = e.target.files[0];
+      if (!archivo) return;
+      vaciar(zona, h('p', { class: 'pequeno suave', style: { margin: 0 } }, 'Subiendo imagen…'));
+      try {
+        p.imagen = await api.subirImagen(await comprimirImagen(archivo));
+        alCambiar();
+      } catch (err) {
+        notificarError(err);
+      }
+      pintar();
+    } });
+    if (!p.imagen) {
+      return vaciar(zona, entrada, h('button', { class: 'boton fantasma mini', type: 'button', onclick: () => entrada.click() }, icono('imagen'), 'Añadir imagen'));
+    }
+    vaciar(zona, entrada, h('div', { class: 'imagen-editor' },
+      h('img', { src: api.urlImagen(p.imagen), alt: 'Imagen de la pregunta' }),
+      h('div', { class: 'fila' },
+        h('button', { class: 'boton mini', type: 'button', onclick: () => entrada.click() }, 'Cambiar'),
+        h('button', { class: 'boton fantasma mini peligro', type: 'button', onclick: () => {
+          delete p.imagen;
+          alCambiar();
+          pintar();
+        } }, 'Quitar'),
+      ),
+    ));
+  };
+  pintar();
 }
 
 // Datos de cada pregunta para pintarla en una lista: su número ("3b") y si abre su ejercicio
@@ -1196,6 +1449,56 @@ function dialogoImportar() {
 
 // ---------- Ficha de un alumno (panel lateral) ----------
 
+// Lo que respondió el alumno, según el tipo de pregunta
+function respuestaRevision(p, o, r) {
+  const enBlanco = () => h('div', { class: 'respuesta-texto vacia' }, 'En blanco');
+  if (N.CON_OPCIONES.has(p.tipo)) {
+    const perm = o.perm || p.opciones.map((_, k) => k);
+    const elegidas = new Set(Array.isArray(r) ? r : r === undefined || r === null ? [] : [r]);
+    const buenas = new Set(p.tipo === 'multiple' ? p.correctas : [p.correcta]);
+    return h('div', { class: 'pila', style: { gap: '4px' } }, perm.map((idx, k) =>
+      h('div', { class: `opcion-revision ${elegidas.has(idx) ? 'elegida' : ''} ${buenas.has(idx) ? 'buena' : ''}` },
+        h('span', { class: 'letra-mini' }, p.tipo === 'vf' ? p.opciones[idx][0] : String.fromCharCode(65 + k)), p.opciones[idx],
+        buenas.has(idx) ? h('span', { class: 'etiqueta-opcion exito' }, 'Correcta') : null,
+        elegidas.has(idx) ? h('span', { class: 'etiqueta-opcion' }, 'Su respuesta') : null),
+    ), elegidas.size ? null : enBlanco());
+  }
+  if (p.tipo === 'relacionar') {
+    if (!N.hayRespuesta(r)) return enBlanco();
+    return h('div', { class: 'pila', style: { gap: '4px' } }, p.pares.map((par, i) => {
+      const elegida = r[i] === null || r[i] === undefined ? null : p.ordenDerecha[r[i]];
+      const bien = elegida === i;
+      return h('div', { class: `opcion-revision ${bien ? 'buena' : ''}` },
+        h('span', { class: 'letra-mini' }, i + 1), `${par.izq} → `, h('b', {}, elegida === null ? '—' : p.pares[elegida]?.der ?? '?'),
+        h('span', { class: `etiqueta-opcion ${bien ? 'exito' : ''}` }, bien ? 'Bien' : `Era: ${par.der}`));
+    }));
+  }
+  if (!N.hayRespuesta(r)) return enBlanco();
+  return h('div', { class: 'respuesta-texto' }, N.textoRespuesta(p, r));
+}
+
+// Rúbrica: al marcar los criterios que cumple el alumno, la nota de la pregunta se calcula sola
+function rubricaRevision(p, a, cambios, notaEntrada) {
+  const marcados = new Set(cambios.rubricas[p.id] ?? a.rubricas?.[p.id] ?? []);
+  return h('div', { class: 'rubrica' },
+    h('span', { class: 'meta-pregunta' }, 'Criterios'),
+    p.criterios.map((c, j) =>
+      h('label', { class: 'casilla criterio' },
+        h('input', { type: 'checkbox', checked: marcados.has(j), onchange: e => {
+          if (e.target.checked) marcados.add(j);
+          else marcados.delete(j);
+          cambios.rubricas[p.id] = [...marcados].sort((x, y) => x - y);
+          const suma = p.criterios.reduce((s, x, k) => s + (marcados.has(k) ? x.puntos : 0), 0);
+          notaEntrada.value = String(Math.round(suma * 100) / 100);
+          cambios.notasManual[p.id] = notaEntrada.value;
+        } }),
+        h('span', {}, c.texto || 'Criterio sin texto'),
+        h('span', { class: 'puntos-criterio' }, N.numero(c.puntos)),
+      ),
+    ),
+  );
+}
+
 // ids: los alumnos de la lista desde la que se abre, para pasar al anterior o al siguiente
 // corregir: abrir cada alumno directamente en su primera pregunta por corregir
 function detalleAlumno(ctx, inicial, ids = [inicial], { corregir = false } = {}) {
@@ -1203,14 +1506,17 @@ function detalleAlumno(ctx, inicial, ids = [inicial], { corregir = false } = {})
   $$('.dialogo-cajon').forEach(d => d.remove());
   let A = inicial;
   let a = null;
-  let notasEditadas = {};
+  // Lo que el profesor ha cambiado y aún no ha guardado
+  const sinCambios = () => ({ notasManual: {}, comentarios: {}, rubricas: {} });
+  let cambios = sinCambios();
+  const hayCambios = () => Object.values(cambios).some(o => Object.keys(o).length > 0);
 
   const cabeza = h('div', { class: 'cajon-cabeza' });
   const cuerpo = h('div', { class: 'cajon-cuerpo' }, h('p', { class: 'suave' }, 'Cargando…'));
   const pie = h('div', { class: 'dialogo-pie' });
   const d = h('dialog', { class: 'dialogo-cajon', 'aria-label': 'Ficha del alumno' }, cabeza, cuerpo, pie);
   const cerrar = async () => {
-    if (Object.keys(notasEditadas).length && !(await confirmar('¿Salir sin guardar?', 'Has cambiado notas que todavía no has guardado.', 'Salir sin guardar', 'peligro'))) return;
+    if (hayCambios() && !(await confirmar('¿Salir sin guardar?', 'Has cambiado la corrección y todavía no la has guardado.', 'Salir sin guardar', 'peligro'))) return;
     d.close();
     d.remove();
   };
@@ -1220,10 +1526,11 @@ function detalleAlumno(ctx, inicial, ids = [inicial], { corregir = false } = {})
   d.showModal();
 
   const guardarNotas = async () => {
-    if (!Object.keys(notasEditadas).length) return;
-    a = await api.guardarNotas(E, A, Object.fromEntries(Object.entries(notasEditadas).map(([k, v]) => [k, v === '' ? null : Number(v)])));
-    notasEditadas = {};
-    notificar('Notas guardadas');
+    if (!hayCambios()) return;
+    const notasManual = Object.fromEntries(Object.entries(cambios.notasManual).map(([k, v]) => [k, v === '' || v === null ? null : Number(v)]));
+    a = await api.guardarCorreccion(E, A, { ...cambios, notasManual });
+    cambios = sinCambios();
+    notificar('Corrección guardada');
   };
 
   const cargar = async nuevo => {
@@ -1327,25 +1634,22 @@ function detalleAlumno(ctx, inicial, ids = [inicial], { corregir = false } = {})
         const abreEjercicio = p.grupo && anterior?.grupo !== p.grupo;
         const r = a.respuestas?.[p.id];
         const dd = c.detalle[p.id];
-        let respuesta;
-        if (p.tipo === 'test') {
-          const perm = o.perm || p.opciones.map((_, k) => k);
-          respuesta = h('div', { class: 'pila', style: { gap: '4px' } }, perm.map((idx, k) =>
-            h('div', { class: `opcion-revision ${idx === r ? 'elegida' : ''} ${idx === p.correcta ? 'buena' : ''}` },
-              h('span', { class: 'letra-mini' }, String.fromCharCode(65 + k)), p.opciones[idx],
-              idx === p.correcta ? h('span', { class: 'etiqueta-opcion exito' }, 'Correcta') : null,
-              idx === r ? h('span', { class: 'etiqueta-opcion' }, 'Su respuesta') : null),
-          ), r === undefined ? h('div', { class: 'respuesta-texto vacia' }, 'En blanco') : null);
-        } else {
-          respuesta = h('div', { class: `respuesta-texto ${r ? '' : 'vacia'}` }, r || 'En blanco');
-        }
-        const chipEstado = { correcta: 'exito', incorrecta: 'peligro', pendiente: 'aviso', manual: 'acento', blanco: '' }[dd.estado];
+        const respuesta = respuestaRevision(p, o, r);
+        const chipEstado = { correcta: 'exito', parcial: 'info', incorrecta: 'peligro', pendiente: 'aviso', manual: 'acento', blanco: '' }[dd.estado];
         const nota = h('input', {
           class: 'nota-manual', type: 'number', step: 0.25, min: -p.puntos, max: p.puntos,
-          value: notasEditadas[p.id] ?? a.notasManual?.[p.id] ?? '', placeholder: N.numero(dd.puntos),
-          'aria-label': `Puntos de la pregunta ${n + 1}`,
-          oninput: e => (notasEditadas[p.id] = e.target.value),
+          value: cambios.notasManual[p.id] ?? a.notasManual?.[p.id] ?? '', placeholder: N.numero(dd.puntos),
+          'aria-label': `Puntos de la pregunta ${numerosOrden[n]}`,
+          oninput: e => (cambios.notasManual[p.id] = e.target.value),
         });
+        const rubrica = p.criterios?.length ? rubricaRevision(p, a, cambios, nota) : null;
+        const comentario = h('textarea', {
+          class: 'comentario-profesor', rows: 1, placeholder: 'Comentario para el alumno (opcional)',
+          value: cambios.comentarios[p.id] ?? a.comentarios?.[p.id] ?? '',
+          'aria-label': `Comentario de la pregunta ${numerosOrden[n]}`,
+          oninput: e => (cambios.comentarios[p.id] = e.target.value),
+        });
+        const solucion = p.tipo !== 'test' && p.tipo !== 'vf' && p.tipo !== 'multiple' ? N.textoSolucion(p) : '';
         return h('div', { class: `respuesta-detalle ${dd.estado === 'pendiente' ? 'por-corregir' : ''}` },
           h('div', { class: 'fila entre' },
             h('span', { class: 'meta-pregunta' }, `Pregunta ${numerosOrden[n]} · ${N.NOMBRE_TIPO[p.tipo]}`),
@@ -1353,8 +1657,11 @@ function detalleAlumno(ctx, inicial, ids = [inicial], { corregir = false } = {})
           ),
           abreEjercicio && p.contexto ? h('div', { class: 'contexto' }, p.contexto) : null,
           h('div', { class: 'enunciado-revision' }, p.apartado ? h('span', { class: 'letra-apartado' }, `${p.apartado})`) : null, p.enunciado),
+          p.imagen ? h('img', { class: 'imagen-revision', src: api.urlImagen(p.imagen), alt: '' }) : null,
           respuesta,
-          p.tipo === 'corta' && p.respuestas.length ? h('div', { class: 'pequeno suave' }, `Aceptadas: ${p.respuestas.join(' / ')}`) : null,
+          solucion ? h('div', { class: 'pequeno suave' }, `${p.tipo === 'corta' ? 'Aceptadas' : 'Solución'}: ${solucion}`) : null,
+          rubrica,
+          comentario,
         );
       }),
       h('h3', { class: 'titulo-cajon' }, 'Registro'),
@@ -1369,18 +1676,18 @@ function detalleAlumno(ctx, inicial, ids = [inicial], { corregir = false } = {})
         if (!(await confirmar('¿Borrar este alumno?', `Se borrará el examen de ${a.nombre} y podrá volver a entrar como si fuera nuevo.`, 'Borrar', 'peligro'))) return;
         ocupado(e.currentTarget, async () => {
           await api.borrarIntento(E, A);
-          notasEditadas = {};
+          cambios = sinCambios();
           d.close();
           d.remove();
         });
       } }, icono('papelera'), 'Borrar'),
-      h('button', { class: 'boton', onclick: () => descargar(`${N.nombreArchivo(a.nombre)}.md`, markdownIntento(ctx.ex, a), 'text/markdown;charset=utf-8') }, icono('bajar'), 'Markdown'),
-      h('button', { class: 'boton', onclick: e => ocupado(e.currentTarget, async () => descargar(`${N.nombreArchivo(a.nombre)}.pdf`, await pdfIntento(ctx.ex, a))) }, icono('bajar'), 'PDF'),
+      h('button', { class: 'boton', onclick: e => ocupado(e.currentTarget, async () => descargar(`${N.nombreArchivo(a.nombre)}.md`, markdownIntento(ctx.ex, a, await opcionesExportar()), 'text/markdown;charset=utf-8')) }, icono('bajar'), 'Markdown'),
+      h('button', { class: 'boton', onclick: e => ocupado(e.currentTarget, async () => descargar(`${N.nombreArchivo(a.nombre)}.pdf`, await pdfIntento(ctx.ex, a, await opcionesExportar()))) }, icono('bajar'), 'PDF'),
       h('button', { class: 'boton primario', onclick: e => ocupado(e.currentTarget, async () => {
-        if (!Object.keys(notasEditadas).length) return notificar('No has cambiado ninguna nota');
+        if (!hayCambios()) return notificar('No has cambiado nada');
         await guardarNotas();
         pintar();
-      }) }, 'Guardar notas'),
+      }) }, 'Guardar corrección'),
     );
   }
 

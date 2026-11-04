@@ -3,8 +3,19 @@
  * No usa el DOM ni Node, así se puede importar desde los dos lados.
  */
 
-export const TIPOS = ['test', 'corta', 'desarrollo'];
-export const NOMBRE_TIPO = { test: 'Test', corta: 'Respuesta corta', desarrollo: 'Desarrollo' };
+export const TIPOS = ['test', 'vf', 'multiple', 'corta', 'numerica', 'relacionar', 'desarrollo'];
+export const NOMBRE_TIPO = {
+  test: 'Test',
+  vf: 'Verdadero o falso',
+  multiple: 'Varias correctas',
+  corta: 'Respuesta corta',
+  numerica: 'Numérica',
+  relacionar: 'Relacionar',
+  desarrollo: 'Desarrollo',
+};
+// Tipos que se responden eligiendo opciones (se barajan y llevan letra A, B, C...)
+export const CON_OPCIONES = new Set(['test', 'vf', 'multiple']);
+export const OPCIONES_VF = ['Verdadero', 'Falso'];
 
 // Incidencias que puede enviar el navegador del alumno
 export const TIPOS_INCIDENCIA = new Set(['salida', 'regreso', 'copiar', 'pegar', 'menu', 'imprimir']);
@@ -14,11 +25,13 @@ export const SOSPECHOSAS = new Set(['salida', 'copiar', 'pegar', 'menu', 'imprim
 export const AJUSTES = {
   titulo: 'Nuevo examen',
   duracion: 60,
+  asignatura: '',
   numPreguntas: 0,
-  maxSalidas: 3,
+  maxSalidas: 1,
   penalizacion: 0,
   barajar: true,
   mostrarNota: false,
+  marcaAgua: false,
 };
 
 export class ErrorTestGO extends Error {
@@ -74,24 +87,68 @@ const redondear = (n, decimales = 2) => Math.round(n * 10 ** decimales) / 10 ** 
 
 // ---------- Exámenes ----------
 
+const esId = v => typeof v === 'string' && /^[a-z0-9]{4,32}$/.test(v);
+const indiceValido = (v, n) => Number.isInteger(v) && v >= 0 && v < n;
+const textoCorto = (v, n) => String(v ?? '').slice(0, n);
+
+function permutacionAleatoria(n) {
+  const a = [...Array(n).keys()];
+  const azar = new Uint32Array(n);
+  crypto.getRandomValues(azar);
+  for (let i = n - 1; i > 0; i--) {
+    const j = azar[i] % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  // Que la columna de la derecha nunca quede en el mismo orden que la izquierda
+  if (n > 1 && a.every((v, i) => v === i)) a.push(a.shift());
+  return a;
+}
+
+const esPermutacion = (a, n) => Array.isArray(a) && a.length === n && new Set(a).size === n && a.every(v => indiceValido(v, n));
+
 export function limpiarPregunta(p = {}) {
   const tipo = TIPOS.includes(p.tipo) ? p.tipo : 'test';
   const q = {
-    id: typeof p.id === 'string' && /^[a-z0-9]{4,32}$/.test(p.id) ? p.id : nuevoId(),
+    id: esId(p.id) ? p.id : nuevoId(),
     tipo,
-    enunciado: String(p.enunciado ?? '').slice(0, 5000),
+    enunciado: textoCorto(p.enunciado, 5000),
     puntos: redondear(acotar(p.puntos, 1, 0, 100)),
   };
-  if (tipo === 'test') {
-    q.opciones = (Array.isArray(p.opciones) ? p.opciones : []).slice(0, 10).map(o => String(o ?? '').slice(0, 1000));
-    q.correcta = Number.isInteger(p.correcta) && p.correcta >= 0 && p.correcta < q.opciones.length ? p.correcta : null;
+  if (esId(p.imagen)) q.imagen = p.imagen;
+  if (tipo === 'test' || tipo === 'multiple') {
+    q.opciones = (Array.isArray(p.opciones) ? p.opciones : []).slice(0, 10).map(o => textoCorto(o, 1000));
     q.fijarOpciones = !!p.fijarOpciones;
+  }
+  if (tipo === 'test') q.correcta = indiceValido(p.correcta, q.opciones.length) ? p.correcta : null;
+  if (tipo === 'vf') {
+    q.opciones = [...OPCIONES_VF];
+    q.correcta = indiceValido(p.correcta, 2) ? p.correcta : null;
+  }
+  if (tipo === 'multiple') {
+    const marcadas = Array.isArray(p.correctas) ? p.correctas : indiceValido(p.correcta, q.opciones.length) ? [p.correcta] : [];
+    q.correctas = [...new Set(marcadas.filter(i => indiceValido(i, q.opciones.length)))].sort((a, b) => a - b);
   }
   if (tipo === 'corta') {
     q.respuestas = (Array.isArray(p.respuestas) ? p.respuestas : [])
       .map(r => String(r ?? '').trim().slice(0, 200))
       .filter(Boolean)
       .slice(0, 20);
+  }
+  if (tipo === 'numerica') {
+    const valor = Number(String(p.valor ?? '').replace(',', '.'));
+    q.valor = p.valor === null || p.valor === undefined || p.valor === '' || !Number.isFinite(valor) ? null : valor;
+    q.tolerancia = redondear(acotar(p.tolerancia, 5, 0, 1e9), 6);
+    q.modoTolerancia = p.modoTolerancia === 'abs' ? 'abs' : '%';
+    q.unidad = textoCorto(p.unidad, 20).trim();
+  }
+  if (tipo === 'relacionar') {
+    q.pares = (Array.isArray(p.pares) ? p.pares : []).slice(0, 20).map(x => ({ izq: textoCorto(x?.izq, 500), der: textoCorto(x?.der, 500) }));
+    // Orden fijo y desordenado de la columna derecha, para que lo que ve el alumno no delate las parejas
+    q.ordenDerecha = esPermutacion(p.ordenDerecha, q.pares.length) ? [...p.ordenDerecha] : permutacionAleatoria(q.pares.length);
+  }
+  if (tipo === 'desarrollo') {
+    q.criterios = (Array.isArray(p.criterios) ? p.criterios : []).slice(0, 20)
+      .map(c => ({ texto: textoCorto(c?.texto, 500), puntos: redondear(acotar(c?.puntos, 0, 0, 100)) }));
   }
   // Apartado de un ejercicio: comparte el enunciado común (contexto) con los demás del mismo grupo
   if (typeof p.grupo === 'string' && /^[a-z0-9]{4,32}$/.test(p.grupo)) {
@@ -143,6 +200,8 @@ export function limpiarExamen(datos = {}, previo = {}) {
   const si = (clave, f) => (datos[clave] !== undefined ? f(datos[clave]) : base[clave]);
   return {
     titulo: String(datos.titulo ?? base.titulo).trim().slice(0, 200) || 'Examen sin título',
+    asignatura: String(datos.asignatura ?? base.asignatura ?? '').trim().slice(0, 120),
+    marcaAgua: si('marcaAgua', Boolean),
     duracion: Math.round(acotar(datos.duracion, base.duracion, 1, 600)),
     numPreguntas: Math.round(acotar(datos.numPreguntas, base.numPreguntas, 0, 500)),
     maxSalidas: Math.round(acotar(datos.maxSalidas, base.maxSalidas, 0, 50)),
@@ -153,11 +212,22 @@ export function limpiarExamen(datos = {}, previo = {}) {
   };
 }
 
-// Lo que puede ver el alumno: sin respuestas correctas
-export const preguntasPublicas = preguntas => preguntas.map(({ correcta, respuestas, ...resto }) => resto);
+// Lo que puede ver el alumno: sin soluciones, criterios ni parejas
+export function preguntaPublica(p) {
+  const { correcta, correctas, respuestas, valor, tolerancia, modoTolerancia, criterios, pares, ordenDerecha, ...resto } = p;
+  if (p.tipo === 'relacionar') {
+    resto.izquierda = pares.map(x => x.izq);
+    resto.derecha = ordenDerecha.map(k => pares[k].der);
+  }
+  return resto;
+}
+
+export const preguntasPublicas = preguntas => preguntas.map(preguntaPublica);
 
 export const datosPublicos = ex => ({
   titulo: ex.titulo,
+  asignatura: ex.asignatura || '',
+  marcaAgua: !!ex.marcaAgua,
   duracion: ex.duracion,
   numPreguntas: ex.numPreguntas,
   maxSalidas: ex.maxSalidas,
@@ -175,9 +245,16 @@ export function problemasExamen(ex) {
   ex.preguntas.forEach((p, i) => {
     const n = `Pregunta ${numeros[i]}`;
     if (!p.enunciado.trim()) avisos.push(`${n}: no tiene enunciado.`);
-    if (p.tipo === 'test' && p.opciones.filter(o => o.trim()).length < 2) avisos.push(`${n}: necesita al menos dos opciones.`);
-    if (p.tipo === 'test' && p.correcta === null) avisos.push(`${n}: no tiene marcada la respuesta correcta.`);
+    if ((p.tipo === 'test' || p.tipo === 'multiple') && p.opciones.filter(o => o.trim()).length < 2) avisos.push(`${n}: necesita al menos dos opciones.`);
+    if ((p.tipo === 'test' || p.tipo === 'vf') && p.correcta === null) avisos.push(`${n}: no tiene marcada la respuesta correcta.`);
+    if (p.tipo === 'multiple' && !p.correctas.length) avisos.push(`${n}: no tiene marcada ninguna opción correcta.`);
     if (p.tipo === 'corta' && !p.respuestas.length) avisos.push(`${n}: no tiene respuestas aceptadas (se corregirá a mano).`);
+    if (p.tipo === 'numerica' && p.valor === null) avisos.push(`${n}: no tiene la respuesta numérica correcta.`);
+    if (p.tipo === 'relacionar' && p.pares.filter(x => x.izq.trim() && x.der.trim()).length < 2) avisos.push(`${n}: necesita al menos dos parejas completas.`);
+    if (p.tipo === 'desarrollo' && p.criterios.length) {
+      const suma = p.criterios.reduce((s, c) => s + c.puntos, 0);
+      if (Math.abs(suma - p.puntos) > 0.001) avisos.push(`${n}: los criterios suman ${numero(suma)} y la pregunta vale ${numero(p.puntos)}.`);
+    }
   });
   return avisos;
 }
@@ -188,8 +265,9 @@ export function comprobarCambios(previo, nuevo, hayAlumnos) {
   const nuevas = new Map(nuevo.preguntas.map(p => [p.id, p]));
   for (const p of previo.preguntas) {
     const q = nuevas.get(p.id);
-    if (!q || q.tipo !== p.tipo || (p.tipo === 'test' && q.opciones.length !== p.opciones.length)) {
-      throw new ErrorTestGO(409, 'Ya hay alumnos en este examen: puedes corregir textos y soluciones, pero no quitar preguntas, cambiar su tipo ni el número de opciones.');
+    const cambiaForma = q && ((p.opciones && q.opciones?.length !== p.opciones.length) || (p.pares && q.pares?.length !== p.pares.length));
+    if (!q || q.tipo !== p.tipo || cambiaForma) {
+      throw new ErrorTestGO(409, 'Ya hay alumnos en este examen: puedes corregir textos y soluciones, pero no quitar preguntas, cambiar su tipo ni el número de opciones o parejas.');
     }
   }
 }
@@ -234,7 +312,7 @@ export function generarOrden(ex, semilla) {
   }
   if (ex.barajar) grupos = barajarCon(grupos, azar);
   return grupos.flat().map(p => {
-    if (p.tipo !== 'test') return { id: p.id, perm: null };
+    if (p.tipo !== 'test' && p.tipo !== 'multiple') return { id: p.id, perm: null };
     const indices = p.opciones.map((_, i) => i);
     return { id: p.id, perm: ex.barajar && !p.fijarOpciones ? barajarCon(indices, azar) : indices };
   });
@@ -254,10 +332,18 @@ export function vistaPreguntas(preguntas, orden) {
       const p = porId.get(o.id);
       if (!p) return null;
       const v = { id: p.id, tipo: p.tipo, enunciado: p.enunciado, puntos: p.puntos };
+      if (p.imagen) v.imagen = p.imagen;
       if (p.grupo) Object.assign(v, { grupo: p.grupo, apartado: p.apartado, contexto: p.contexto });
-      if (p.tipo === 'test') {
+      if (CON_OPCIONES.has(p.tipo)) {
         const perm = (o.perm || p.opciones.map((_, i) => i)).filter(i => i < p.opciones.length);
         v.opciones = perm.map(i => ({ i, texto: p.opciones[i] }));
+      }
+      if (p.tipo === 'numerica') v.unidad = p.unidad || '';
+      if (p.tipo === 'relacionar') {
+        // Acepta la pregunta completa (profesor) o la pública (alumno)
+        const pub = p.izquierda ? p : preguntaPublica(p);
+        v.izquierda = pub.izquierda;
+        v.derecha = pub.derecha.map((texto, j) => ({ j, texto }));
       }
       return v;
     })
@@ -300,14 +386,40 @@ export function limpiarRespuestas(preguntas, orden, respuestas) {
   for (const [id, valor] of Object.entries(respuestas || {})) {
     const p = porId.get(id);
     if (!p || !permitidas.has(id) || valor === null || valor === undefined || valor === '') continue;
-    if (p.tipo === 'test') {
+    if (p.tipo === 'test' || p.tipo === 'vf') {
       const n = Number(valor);
-      if (Number.isInteger(n) && n >= 0 && n < p.opciones.length) salida[id] = n;
+      if (indiceValido(n, p.opciones.length)) salida[id] = n;
+    } else if (p.tipo === 'multiple') {
+      const elegidas = [...new Set((Array.isArray(valor) ? valor : []).map(Number).filter(n => indiceValido(n, p.opciones.length)))].sort((a, b) => a - b);
+      if (elegidas.length) salida[id] = elegidas;
+    } else if (p.tipo === 'relacionar') {
+      // Para cada fila de la izquierda, la posición elegida en la columna derecha (o null)
+      const n = p.pares?.length ?? p.izquierda?.length ?? 0;
+      const filas = [...Array(n)].map((_, i) => {
+        const v = Array.isArray(valor) ? valor[i] : null;
+        return v === null || v === undefined || v === '' || !indiceValido(Number(v), n) ? null : Number(v);
+      });
+      if (filas.some(v => v !== null)) salida[id] = filas;
+    } else if (p.tipo === 'numerica') {
+      salida[id] = String(valor).trim().slice(0, 50);
     } else {
       salida[id] = String(valor).slice(0, 20000);
     }
   }
   return salida;
+}
+
+// ¿Ha contestado algo? (sirve para todos los tipos)
+export const hayRespuesta = r =>
+  r !== undefined && r !== null && (Array.isArray(r) ? r.some(v => v !== null && v !== undefined) : String(r).trim() !== '');
+
+// "3,5" o "3.5" → 3.5; lo que no es número → NaN
+export const leerNumero = texto => Number(String(texto ?? '').trim().replace(/\s/g, '').replace(',', '.'));
+
+export function rangoNumerica(p) {
+  if (p.valor === null) return null;
+  const margen = p.modoTolerancia === 'abs' ? p.tolerancia : Math.abs(p.valor) * p.tolerancia / 100;
+  return [redondear(p.valor - margen, 6), redondear(p.valor + margen, 6)];
 }
 
 // Lo que provoca una incidencia del alumno: cambios en el intento y registros nuevos
@@ -323,7 +435,8 @@ export function efectoIncidencia(a, maxSalidas, tipo, detalle, ahora) {
     if (a.estado === 'en_curso' && maxSalidas > 0 && salidasDesde(tras) >= maxSalidas) {
       cambios.estado = 'bloqueado';
       cambios.bloqueadoPor = 'automatico';
-      registros.push({ t: ahora, tipo: 'bloqueo', detalle: `Bloqueado automáticamente tras ${salidasDesde(tras)} salidas` });
+      const n = salidasDesde(tras);
+      registros.push({ t: ahora, tipo: 'bloqueo', detalle: `Bloqueado automáticamente tras ${n} ${n === 1 ? 'salida' : 'salidas'}` });
     }
   }
   return { cambios, registros };
@@ -391,18 +504,36 @@ export function corregir(ex, a) {
     max += p.puntos;
     const r = a.respuestas?.[id];
     const manual = a.notasManual?.[id];
-    const vacia = r === undefined || r === null || r === '';
+    const vacia = !hayRespuesta(r);
     let puntos = 0;
     let estado;
+    // Parte de la pregunta acertada (0 a 1) → puntos y estado
+    const fraccion = f => [p.puntos * f, f >= 1 ? 'correcta' : f > 0 ? 'parcial' : 'incorrecta'];
     if (manual !== undefined && manual !== null) {
       puntos = acotar(manual, 0, -p.puntos, p.puntos);
       estado = 'manual';
     } else if (vacia) {
       estado = 'blanco';
-    } else if (p.tipo === 'test') {
+    } else if (p.tipo === 'test' || p.tipo === 'vf') {
       if (p.correcta === null) estado = 'pendiente';
       else if (r === p.correcta) [puntos, estado] = [p.puntos, 'correcta'];
       else [puntos, estado] = [-p.puntos * (ex.penalizacion || 0), 'incorrecta'];
+    } else if (p.tipo === 'multiple') {
+      // Cada correcta marcada suma y cada incorrecta marcada resta, sin bajar de 0
+      if (!p.correctas.length) estado = 'pendiente';
+      else {
+        const bien = r.filter(i => p.correctas.includes(i)).length;
+        const mal = r.length - bien;
+        [puntos, estado] = fraccion(Math.max(0, (bien - mal) / p.correctas.length));
+      }
+    } else if (p.tipo === 'numerica') {
+      const rango = rangoNumerica(p);
+      const n = leerNumero(r);
+      if (!rango) estado = 'pendiente';
+      else [puntos, estado] = fraccion(Number.isFinite(n) && n >= rango[0] - 1e-9 && n <= rango[1] + 1e-9 ? 1 : 0);
+    } else if (p.tipo === 'relacionar') {
+      const aciertos = p.pares.filter((_, i) => r[i] !== null && r[i] !== undefined && p.ordenDerecha[r[i]] === i).length;
+      [puntos, estado] = p.pares.length ? fraccion(aciertos / p.pares.length) : [0, 'pendiente'];
     } else if (p.tipo === 'corta' && p.respuestas.length) {
       const bien = p.respuestas.some(x => normalizar(x) === normalizar(r));
       [puntos, estado] = bien ? [p.puntos, 'correcta'] : [0, 'incorrecta'];
@@ -419,6 +550,7 @@ export function corregir(ex, a) {
 
 export const ESTADO_RESPUESTA = {
   correcta: 'Correcta',
+  parcial: 'Parcialmente correcta',
   incorrecta: 'Incorrecta',
   blanco: 'En blanco',
   pendiente: 'Pendiente de corregir',
@@ -442,9 +574,55 @@ export function duracionTexto(ms) {
 export const fechaHora = ms => (ms ? new Date(ms).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'medium' }) : '');
 
 export function textoRespuesta(p, r) {
-  if (r === undefined || r === null || r === '') return '';
-  if (p.tipo === 'test') return p.opciones[r] ?? '';
+  if (!hayRespuesta(r)) return '';
+  if (p.tipo === 'test' || p.tipo === 'vf') return p.opciones[r] ?? '';
+  if (p.tipo === 'multiple') return r.map(i => p.opciones[i]).join(' · ');
+  if (p.tipo === 'relacionar') return p.pares.map((x, i) => `${x.izq} → ${r[i] === null ? '—' : p.pares[p.ordenDerecha[r[i]]]?.der ?? ''}`).join(' · ');
+  if (p.tipo === 'numerica') return `${r}${p.unidad ? ` ${p.unidad}` : ''}`;
   return String(r);
+}
+
+// La solución en texto, para el profesor y las exportaciones
+export function textoSolucion(p) {
+  if (p.tipo === 'test' || p.tipo === 'vf') return p.correcta === null ? '' : p.opciones[p.correcta];
+  if (p.tipo === 'multiple') return p.correctas.map(i => p.opciones[i]).join(' · ');
+  if (p.tipo === 'corta') return p.respuestas.join(' / ');
+  if (p.tipo === 'relacionar') return p.pares.map(x => `${x.izq} → ${x.der}`).join(' · ');
+  if (p.tipo === 'numerica') {
+    if (p.valor === null) return '';
+    const u = p.unidad ? ` ${p.unidad}` : '';
+    const margen = p.tolerancia ? ` (± ${numero(p.tolerancia, 6)}${p.modoTolerancia === '%' ? ' %' : u})` : '';
+    return `${numero(p.valor, 6)}${u}${margen}`;
+  }
+  return '';
+}
+
+// Corrección a mano que hace el profesor: notas, comentarios y criterios de la rúbrica marcados
+export function limpiarCorreccion(ex, previo, datos) {
+  const resultado = {
+    notasManual: { ...(previo.notasManual || {}) },
+    comentarios: { ...(previo.comentarios || {}) },
+    rubricas: { ...(previo.rubricas || {}) },
+  };
+  for (const p of ex.preguntas) {
+    if (datos.notasManual && p.id in datos.notasManual) {
+      const v = datos.notasManual[p.id];
+      if (v === null || v === '') delete resultado.notasManual[p.id];
+      else resultado.notasManual[p.id] = acotar(v, 0, -p.puntos, p.puntos);
+    }
+    if (datos.comentarios && p.id in datos.comentarios) {
+      const t = String(datos.comentarios[p.id] ?? '').trim().slice(0, 2000);
+      if (t) resultado.comentarios[p.id] = t;
+      else delete resultado.comentarios[p.id];
+    }
+    if (datos.rubricas && p.id in datos.rubricas) {
+      const n = p.criterios?.length || 0;
+      const marcados = [...new Set((datos.rubricas[p.id] || []).map(Number).filter(i => indiceValido(i, n)))].sort((x, y) => x - y);
+      if (marcados.length) resultado.rubricas[p.id] = marcados;
+      else delete resultado.rubricas[p.id];
+    }
+  }
+  return resultado;
 }
 
 const celdaCSV = v => {

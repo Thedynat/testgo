@@ -1,4 +1,5 @@
-// Examen de un alumno (enunciados y debajo su respuesta) en Markdown, PDF o todos en un ZIP
+// Examen de un alumno (enunciados y debajo su respuesta) en Markdown, PDF o todos en un ZIP.
+// opciones: { centro: { nombre, logo }, urlImagen: id => url } para el logo y las imágenes de las preguntas
 import * as N from './nucleo.js';
 import { jspdf, jszip } from './librerias.js';
 
@@ -12,7 +13,7 @@ function preguntasDelAlumno(ex, a) {
     .map(o => {
       const p = porId.get(o.id);
       if (!p) return null;
-      const perm = p.tipo === 'test' ? (o.perm || p.opciones.map((_, i) => i)).filter(i => i < p.opciones.length) : [];
+      const perm = N.CON_OPCIONES.has(p.tipo) ? (o.perm || p.opciones.map((_, i) => i)).filter(i => i < p.opciones.length) : [];
       return { p, perm };
     })
     .filter(Boolean);
@@ -21,11 +22,13 @@ function preguntasDelAlumno(ex, a) {
   return lista.map((x, i) => ({ ...x, numero: numeros[i], abreEjercicio: !!x.p.grupo && lista[i - 1]?.p.grupo !== x.p.grupo }));
 }
 
-function resumen(ex, a) {
+function resumen(ex, a, centro) {
   const c = N.corregir(ex, a);
   return {
     c,
     datos: [
+      centro?.nombre ? ['Centro', centro.nombre] : null,
+      ex.asignatura ? ['Asignatura', ex.asignatura] : null,
       ['Alumno', a.nombre],
       ['Estado', N.ESTADO_INTENTO[a.estado] || a.estado],
       ['Nota', `${N.numero(c.nota)} / 10 (${N.numero(c.total)} de ${N.numero(c.max)} puntos)${c.pendiente ? ', provisional: faltan preguntas por corregir' : ''}`],
@@ -38,16 +41,42 @@ function resumen(ex, a) {
 
 const puntosTexto = n => `${N.numero(n)} ${Math.abs(n) === 1 ? 'punto' : 'puntos'}`;
 
-function respuestaTest(p, perm, r) {
-  if (r === undefined || r === null || r === '') return null;
-  const pos = perm.indexOf(r);
-  return `${pos >= 0 ? `${LETRA(pos)}) ` : ''}${p.opciones[r] ?? ''}`;
+// Opciones de las preguntas que se responden eligiendo, con las marcas de elegida y correcta
+function opcionesConMarcas(p, perm, r) {
+  const elegidas = new Set(Array.isArray(r) ? r : N.hayRespuesta(r) ? [r] : []);
+  const buenas = new Set(p.tipo === 'multiple' ? p.correctas : [p.correcta]);
+  return perm.map((idx, j) => ({
+    texto: `${p.tipo === 'vf' ? '' : `${LETRA(j)}) `}${p.opciones[idx]}`,
+    elegida: elegidas.has(idx),
+    correcta: buenas.has(idx),
+  }));
 }
+
+// Texto de la respuesta del alumno (null si la dejó en blanco)
+function respuestaTexto(p, perm, r) {
+  if (!N.hayRespuesta(r)) return null;
+  if (N.CON_OPCIONES.has(p.tipo)) {
+    return opcionesConMarcas(p, perm, r).filter(o => o.elegida).map(o => o.texto).join('\n');
+  }
+  if (p.tipo === 'relacionar') {
+    return p.pares.map((par, i) => {
+      const k = r[i] === null || r[i] === undefined ? null : p.ordenDerecha[r[i]];
+      return `${par.izq} → ${k === null ? '(sin responder)' : p.pares[k]?.der ?? ''}${k === i ? '  ✓' : ''}`;
+    }).join('\n');
+  }
+  return N.textoRespuesta(p, r);
+}
+
+// Criterios de la rúbrica con los que ha marcado el profesor
+const criteriosTexto = (p, a) => {
+  const marcados = new Set(a.rubricas?.[p.id] || []);
+  return (p.criterios || []).map((c, j) => ({ texto: `${c.texto} (${N.numero(c.puntos)})`, cumple: marcados.has(j) }));
+};
 
 // ---------- Markdown ----------
 
-export function markdownIntento(ex, a) {
-  const { c, datos } = resumen(ex, a);
+export function markdownIntento(ex, a, { centro } = {}) {
+  const { c, datos } = resumen(ex, a, centro);
   const l = [`# ${ex.titulo}`, ''];
   for (const [clave, valor] of datos) l.push(`- **${clave}:** ${valor}`);
   l.push('', '---', '');
@@ -56,20 +85,28 @@ export function markdownIntento(ex, a) {
     const r = a.respuestas?.[p.id];
     if (abreEjercicio && p.contexto) l.push(`## Ejercicio ${numero.replace(/[a-z]+$/, '')}`, '', p.contexto.trim(), '');
     l.push(`${p.grupo ? '###' : '##'} Pregunta ${numero}`, '', `*${N.NOMBRE_TIPO[p.tipo]} · ${puntosTexto(p.puntos)}*`, '', p.enunciado.trim(), '');
-    if (p.tipo === 'test') {
-      perm.forEach((idx, j) => {
-        const marcas = [idx === r ? '**← respuesta del alumno**' : '', idx === p.correcta ? '*(correcta)*' : ''].filter(Boolean).join(' ');
-        l.push(`- ${LETRA(j)}) ${p.opciones[idx]}${marcas ? ` ${marcas}` : ''}`);
-      });
+    if (p.imagen) l.push('*(La pregunta incluye una imagen.)*', '');
+    if (N.CON_OPCIONES.has(p.tipo)) {
+      for (const o of opcionesConMarcas(p, perm, r)) {
+        const marcas = [o.elegida ? '**← respuesta del alumno**' : '', o.correcta ? '*(correcta)*' : ''].filter(Boolean).join(' ');
+        l.push(`- ${o.texto}${marcas ? ` ${marcas}` : ''}`);
+      }
       l.push('');
     }
     l.push('**Respuesta del alumno:**', '');
-    const texto = p.tipo === 'test' ? respuestaTest(p, perm, r) : r;
-    if (texto === null || texto === undefined || String(texto).trim() === '') l.push('> *(en blanco)*');
+    const texto = respuestaTexto(p, perm, r);
+    if (texto === null || !String(texto).trim()) l.push('> *(en blanco)*');
     else for (const linea of String(texto).split(/\r?\n/)) l.push(`> ${linea}`);
     l.push('');
-    if (p.tipo === 'corta' && p.respuestas.length) l.push(`*Respuestas aceptadas: ${p.respuestas.join(' / ')}*`, '');
+    const solucion = N.CON_OPCIONES.has(p.tipo) ? '' : N.textoSolucion(p);
+    if (solucion) l.push(`*${p.tipo === 'corta' ? 'Respuestas aceptadas' : 'Solución'}: ${solucion}*`, '');
+    if (p.criterios?.length) {
+      l.push('**Criterios de corrección:**', '');
+      for (const k of criteriosTexto(p, a)) l.push(`- [${k.cumple ? 'x' : ' '}] ${k.texto}`);
+      l.push('');
+    }
     if (d) l.push(`**Corrección:** ${N.ESTADO_RESPUESTA[d.estado]} · ${N.numero(d.puntos)} / ${N.numero(d.max)}`, '');
+    if (a.comentarios?.[p.id]) l.push(`**Comentario del profesor:** ${a.comentarios[p.id]}`, '');
     l.push('---', '');
   });
   l.push(`*Generado con TestGO el ${N.fechaHora(Date.now())}*`, '');
@@ -80,7 +117,7 @@ export function markdownIntento(ex, a) {
 
 // Las fuentes estándar de PDF solo tienen caracteres latinos: el resto se cambia por "?"
 const PERMITIDOS = /[^\n\t\x20-\x7E\xA0-\xFF€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ]/g;
-const paraPDF = texto => String(texto ?? '').replace(/\t/g, '    ').replace(PERMITIDOS, '?');
+const paraPDF = texto => String(texto ?? '').replace(/\t/g, '    ').replace(/→/g, '->').replace(/✓/g, '(bien)').replace(PERMITIDOS, '?');
 
 const COLOR = {
   marino: [12, 18, 48],
@@ -91,16 +128,46 @@ const COLOR = {
   fondo: [245, 247, 252],
   verde: [21, 122, 82],
   rojo: [198, 47, 47],
+  ambar: [180, 83, 9],
 };
 
-export async function pdfIntento(ex, a) {
+// Descarga las imágenes (logo y preguntas) como data: URL con su tamaño, para meterlas en el PDF
+async function cargarImagenes(ids, urlImagen) {
+  const imagenes = new Map();
+  if (!urlImagen) return imagenes;
+  await Promise.all([...new Set(ids.filter(Boolean))].map(async id => {
+    try {
+      const blob = await fetch(urlImagen(id)).then(r => (r.ok ? r.blob() : Promise.reject(new Error(r.status))));
+      const datos = await new Promise((resolver, rechazar) => {
+        const lector = new FileReader();
+        lector.onload = () => resolver(lector.result);
+        lector.onerror = rechazar;
+        lector.readAsDataURL(blob);
+      });
+      const img = await new Promise((resolver, rechazar) => {
+        const i = new Image();
+        i.onload = () => resolver(i);
+        i.onerror = rechazar;
+        i.src = datos;
+      });
+      const formato = blob.type.includes('png') ? 'PNG' : blob.type.includes('webp') ? 'WEBP' : 'JPEG';
+      imagenes.set(id, { datos, formato, ancho: img.naturalWidth, alto: img.naturalHeight });
+    } catch {}
+  }));
+  return imagenes;
+}
+
+const idsImagenes = (ex, centro) => [centro?.logo, ...ex.preguntas.map(p => p.imagen)];
+
+export async function pdfIntento(ex, a, opciones = {}) {
   const JsPDF = await jspdf();
+  const imagenes = await cargarImagenes(idsImagenes(ex, opciones.centro), opciones.urlImagen);
   const doc = new JsPDF({ unit: 'mm', format: 'a4' });
-  dibujarIntento(doc, ex, a);
+  dibujarIntento(doc, ex, a, opciones.centro, imagenes);
   return doc.output('blob');
 }
 
-function dibujarIntento(doc, ex, a) {
+function dibujarIntento(doc, ex, a, centro, imagenes = new Map()) {
   const M = 18;
   const ANCHO = 210 - 2 * M;
   const ALTO_UTIL = 297 - 20;
@@ -130,19 +197,55 @@ function dibujarIntento(doc, ex, a) {
     }
   }
 
-  // Cabecera con la marca
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(...COLOR.marino);
-  doc.text('Test', M, y);
-  doc.setTextColor(...COLOR.go);
-  doc.text('GO', M + doc.getTextWidth('Test'), y);
-  y += 10;
+  // Imagen ajustada al ancho disponible y a una altura máxima
+  function imagen(id, altoMax = 80, anchoMax = ANCHO) {
+    const img = imagenes.get(id);
+    if (!img) return;
+    const escala = Math.min(anchoMax / img.ancho, altoMax / img.alto);
+    const w = img.ancho * escala;
+    const hh = img.alto * escala;
+    salto(hh + 2);
+    try {
+      doc.addImage(img.datos, img.formato, M, y, w, hh);
+      y += hh + 3;
+    } catch {}
+  }
 
+  // Cabecera: logo y nombre del centro, o la marca de TestGO si no hay
+  const logo = centro?.logo && imagenes.get(centro.logo);
+  if (logo || centro?.nombre) {
+    let x = M;
+    if (logo) {
+      // 12 mm de alto, o menos si el logo es muy ancho (máximo 40 mm)
+      const proporcion = logo.ancho / logo.alto;
+      const ancho = Math.min(40, proporcion * 12);
+      try {
+        doc.addImage(logo.datos, logo.formato, M, y - 8, ancho, ancho / proporcion);
+        x += ancho + 4;
+      } catch {}
+    }
+    if (centro?.nombre) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(...COLOR.marino);
+      doc.text(paraPDF(centro.nombre), x, y - 1);
+    }
+    y += 10;
+  } else {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...COLOR.marino);
+    doc.text('Test', M, y);
+    doc.setTextColor(...COLOR.go);
+    doc.text('GO', M + doc.getTextWidth('Test'), y);
+    y += 10;
+  }
+
+  if (ex.asignatura) texto(ex.asignatura, { tam: 10, color: COLOR.gris, negrita: true });
   texto(ex.titulo, { tam: 17, negrita: true });
   y += 2;
-  const { c, datos } = resumen(ex, a);
-  for (const [clave, valor] of datos) {
+  const { c, datos } = resumen(ex, a, null);
+  for (const [clave, valor] of datos.filter(([k]) => k !== 'Asignatura')) {
     salto(6);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
@@ -174,31 +277,40 @@ function dibujarIntento(doc, ex, a) {
     y += 1.5;
     texto(p.enunciado.trim() || '(sin enunciado)', { tam: 11 });
     y += 1.5;
-    if (p.tipo === 'test') {
-      perm.forEach((idx, j) => {
-        const elegida = idx === r;
-        const correcta = idx === p.correcta;
-        const marca = [elegida ? '<- respuesta del alumno' : '', correcta ? '(correcta)' : ''].filter(Boolean).join('  ');
-        texto(`${LETRA(j)}) ${p.opciones[idx]}${marca ? `   ${marca}` : ''}`, {
+    if (p.imagen) imagen(p.imagen);
+    if (N.CON_OPCIONES.has(p.tipo)) {
+      for (const o of opcionesConMarcas(p, perm, r)) {
+        const marca = [o.elegida ? '<- respuesta del alumno' : '', o.correcta ? '(correcta)' : ''].filter(Boolean).join('  ');
+        texto(`${o.texto}${marca ? `   ${marca}` : ''}`, {
           sangria: 4,
-          negrita: elegida,
-          color: correcta ? COLOR.verde : elegida && !correcta ? COLOR.rojo : COLOR.marino,
+          negrita: o.elegida,
+          color: o.correcta ? COLOR.verde : o.elegida ? COLOR.rojo : COLOR.marino,
         });
-      });
+      }
       y += 1.5;
     }
     texto('Respuesta del alumno', { tam: 9.5, negrita: true, color: COLOR.gris });
-    const respuesta = p.tipo === 'test' ? respuestaTest(p, perm, r) : r;
-    const vacia = respuesta === null || respuesta === undefined || String(respuesta).trim() === '';
+    const respuesta = respuestaTexto(p, perm, r);
+    const vacia = respuesta === null || !String(respuesta).trim();
     texto(vacia ? '(en blanco)' : String(respuesta), { cursiva: vacia, color: vacia ? COLOR.gris : COLOR.marino, barra: COLOR.indigo, sangria: 1 });
-    if (p.tipo === 'corta' && p.respuestas.length) {
+    const solucion = N.CON_OPCIONES.has(p.tipo) ? '' : N.textoSolucion(p);
+    if (solucion) {
       y += 1;
-      texto(`Respuestas aceptadas: ${p.respuestas.join(' / ')}`, { tam: 9, cursiva: true, color: COLOR.gris });
+      texto(`${p.tipo === 'corta' ? 'Respuestas aceptadas' : 'Solución'}: ${solucion}`, { tam: 9, cursiva: true, color: COLOR.gris });
+    }
+    if (p.criterios?.length) {
+      y += 1;
+      texto('Criterios de corrección', { tam: 9.5, negrita: true, color: COLOR.gris });
+      for (const k of criteriosTexto(p, a)) texto(`${k.cumple ? '[x]' : '[  ]'} ${k.texto}`, { tam: 9.5, sangria: 3, color: k.cumple ? COLOR.verde : COLOR.marino });
     }
     if (d) {
       y += 1;
-      const color = d.estado === 'correcta' ? COLOR.verde : d.estado === 'incorrecta' ? COLOR.rojo : COLOR.gris;
+      const color = d.estado === 'correcta' ? COLOR.verde : d.estado === 'incorrecta' ? COLOR.rojo : d.estado === 'parcial' ? COLOR.ambar : COLOR.gris;
       texto(`${N.ESTADO_RESPUESTA[d.estado]} · ${N.numero(d.puntos)} / ${N.numero(d.max)}`, { tam: 9.5, negrita: true, color });
+    }
+    if (a.comentarios?.[p.id]) {
+      y += 1;
+      texto(`Comentario del profesor: ${a.comentarios[p.id]}`, { tam: 9.5, cursiva: true, color: COLOR.indigo });
     }
     y += 6;
   });
@@ -217,8 +329,9 @@ function dibujarIntento(doc, ex, a) {
 
 // ---------- Todos en un ZIP ----------
 
-export async function zipTodos(ex, intentos, alProgreso = () => {}) {
+export async function zipTodos(ex, intentos, alProgreso = () => {}, opciones = {}) {
   const [JSZip, JsPDF] = await Promise.all([jszip(), jspdf()]);
+  const imagenes = await cargarImagenes(idsImagenes(ex, opciones.centro), opciones.urlImagen);
   const zip = new JSZip();
   const carpeta = N.nombreArchivo(ex.titulo);
   const usados = new Set();
@@ -227,9 +340,9 @@ export async function zipTodos(ex, intentos, alProgreso = () => {}) {
     let base = N.nombreArchivo(a.nombre);
     for (let n = 2; usados.has(base); n++) base = `${N.nombreArchivo(a.nombre)}-${n}`;
     usados.add(base);
-    zip.file(`${carpeta}/markdown/${base}.md`, markdownIntento(ex, a));
+    zip.file(`${carpeta}/markdown/${base}.md`, markdownIntento(ex, a, opciones));
     const doc = new JsPDF({ unit: 'mm', format: 'a4' });
-    dibujarIntento(doc, ex, a);
+    dibujarIntento(doc, ex, a, opciones.centro, imagenes);
     zip.file(`${carpeta}/pdf/${base}.pdf`, doc.output('arraybuffer'));
     alProgreso(i + 1, ordenados.length);
     await new Promise(r => setTimeout(r, 0)); // deja respirar a la página

@@ -118,6 +118,34 @@ export function descargar(nombre, contenido, tipo = 'text/plain;charset=utf-8') 
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+// Reduce una foto a un tamaño razonable (máx. 1600 px) y la devuelve como data: URL
+export async function comprimirImagen(archivo, lado = 1600) {
+  if (!archivo.type.startsWith('image/')) throw new Error('El archivo no es una imagen.');
+  const url = URL.createObjectURL(archivo);
+  try {
+    const img = await new Promise((resolver, rechazar) => {
+      const i = new Image();
+      i.onload = () => resolver(i);
+      i.onerror = () => rechazar(new Error('No se ha podido abrir la imagen.'));
+      i.src = url;
+    });
+    const escala = Math.min(1, lado / Math.max(img.naturalWidth, img.naturalHeight));
+    const lienzo = document.createElement('canvas');
+    lienzo.width = Math.round(img.naturalWidth * escala);
+    lienzo.height = Math.round(img.naturalHeight * escala);
+    const c = lienzo.getContext('2d');
+    c.fillStyle = '#fff'; // las PNG transparentes quedan sobre blanco
+    c.fillRect(0, 0, lienzo.width, lienzo.height);
+    c.drawImage(img, 0, 0, lienzo.width, lienzo.height);
+    // Las capturas con texto o esquemas se ven mejor en PNG; las fotos, en JPG
+    const png = lienzo.toDataURL('image/png');
+    const jpg = lienzo.toDataURL('image/jpeg', 0.85);
+    return archivo.type === 'image/png' && png.length < 1.4e6 ? png : jpg;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export function relojTexto(ms) {
   const s = Math.max(0, Math.ceil(ms / 1000));
   const hh = Math.floor(s / 3600);
@@ -152,6 +180,8 @@ const ICONOS = {
   pantalla: 'M3 4h18v12H3zM8 20h8M12 16v4',
   refrescar: 'M20 11a8 8 0 0 0-14.9-3M4 5v3h3M4 13a8 8 0 0 0 14.9 3M20 19v-3h-3',
   x: 'M18 6 6 18M6 6l12 12',
+  imagen: 'M4 5h16v14H4zM4 15l4-4 5 5M14 14l2-2 4 4M15.5 8.5h.01',
+  escuela: 'M3 10 12 5l9 5-9 5zM7 12v4c0 1 2 3 5 3s5-2 5-3v-4',
   chispa: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',
   abajo: 'm6 9 6 6 6-6',
   copia: 'M9 9h11v11H9zM5 15H4V4h11v1',

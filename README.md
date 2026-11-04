@@ -22,13 +22,23 @@ TestGO es una aplicación web para hacer exámenes en clase desde el ordenador o
 
 **Para el profesor**
 
-- **Preguntas:** test, respuesta corta (se corrige sola, sin tener en cuenta mayúsculas ni tildes) y desarrollo (se corrige a mano). Los ejercicios con apartados se muestran como 9a, 9b y 9c, con el enunciado común encima.
+- **Siete tipos de pregunta,** todos con imagen opcional (por ejemplo, para identificar componentes de una placa base):
+  - **Test** y **verdadero o falso**.
+  - **Varias correctas:** las correctas marcadas suman y las incorrectas restan.
+  - **Respuesta corta:** se corrige sola, sin tener en cuenta mayúsculas ni tildes.
+  - **Numérica:** con un margen en % o en unidades, por ejemplo 12 V ± 5 %.
+  - **Relacionar columnas.**
+  - **Desarrollo:** con criterios de corrección (rúbrica). Al corregir marcas los que cumple el alumno y la nota se calcula sola.
+- **Ejercicios con apartados:** se muestran como 9a, 9b y 9c, con el enunciado común encima.
+- **Comentarios del profesor** en cada respuesta. Salen en el PDF del alumno.
 - **Importar** un examen que ya tienes:
   - Desde **Word o PDF**: TestGO separa las preguntas, opciones, soluciones y puntos, y quita las líneas para responder y las cabeceras de página.
   - **Con ayuda de una IA** (ChatGPT, Gemini, Claude…): TestGO te da las instrucciones, la IA convierte el examen y tú pegas el resultado.
   - Antes de importar, todo pasa por una pantalla de revisión.
-- **Ajustes del examen:** duración, preguntas al azar por alumno, barajar preguntas y opciones, penalización por fallo en test y si el alumno ve su nota al entregar.
-- **Control antichuleta:** registra cuándo el alumno sale de la pantalla completa, cambia de pestaña, copia o pega. A partir de un número de salidas, el examen se bloquea.
+- **Ajustes del examen:** asignatura, duración, preguntas al azar por alumno, barajar preguntas y opciones, penalización por fallo en test y si el alumno ve su nota al entregar.
+- **Control antichuleta:** registra cuándo el alumno sale de la pantalla completa, cambia de pestaña, copia o pega. Por defecto, **el examen se bloquea a la primera salida**; el profesor puede cambiarlo o desbloquearlo desde el panel.
+- **Marca de agua** opcional: el nombre del alumno y la fecha de fondo en todo el examen, para que cualquier foto o captura diga de quién es.
+- **Tu centro:** el nombre y el logo del instituto salen en la entrada de los alumnos, en sus exámenes y en los PDF.
 - **En directo:** quién ha entrado, su progreso, el tiempo, las salidas y la última incidencia. Desde ahí puedes bloquear, desbloquear, dar o quitar tiempo, recoger o reabrir un examen, y permitir que un alumno vuelva a entrar desde otro equipo.
 - **Mostrar a la clase:** la dirección y el código en grande para proyectarlos.
 - **Resultados:** nota media, aprobados, pendientes de corregir y porcentaje de acierto por pregunta. *Empezar a corregir* recorre uno a uno los alumnos que tienen preguntas por corregir a mano.

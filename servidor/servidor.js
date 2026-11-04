@@ -25,7 +25,7 @@ const MAX_INCIDENCIAS = 2000;
 
 // ---------- Datos ----------
 
-const vacio = () => ({ config: {}, examenes: {}, codigos: {}, intentos: {}, nombres: {}, solicitudes: {} });
+const vacio = () => ({ config: {}, examenes: {}, codigos: {}, intentos: {}, nombres: {}, solicitudes: {}, imagenes: {} });
 
 function cargar() {
   try {
@@ -154,7 +154,7 @@ function estadoAlumno(ex, a) {
     const c = N.corregir(ex, a);
     nota = { nota: c.nota, total: c.total, max: c.max, pendiente: c.pendiente };
   }
-  return { examen: N.datosPublicos(ex), intento, nota, ahora: ahora() };
+  return { examen: N.datosPublicos(ex), intento, nota, centro: datosCentro(), ahora: ahora() };
 }
 
 // ---------- Rutas ----------
@@ -397,7 +397,54 @@ ruta('DELETE', '/api/profesor/examenes/:E', 'profesor', ({ params }) => {
   const ex = examenOError(params.E);
   delete db.codigos[ex.codigo];
   for (const tabla of ['examenes', 'intentos', 'nombres', 'solicitudes']) delete db[tabla][ex.id];
+  limpiarImagenes();
   guardar();
+});
+
+// ---------- Imágenes (preguntas y logo del centro) ----------
+
+const MAX_IMAGEN = 2 * 1024 * 1024;
+const RE_IMAGEN = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
+
+ruta('POST', '/api/profesor/imagenes', 'profesor', ({ cuerpo }) => {
+  const m = String(cuerpo.datos || '').match(RE_IMAGEN);
+  if (!m) throw new ErrorTestGO(400, 'La imagen tiene que ser PNG, JPG, WebP o GIF.');
+  if (m[2].length * 0.75 > MAX_IMAGEN) throw new ErrorTestGO(413, 'La imagen es demasiado grande (máximo 2 MB).');
+  const id = N.nuevoId(12);
+  db.imagenes[id] = { tipo: m[1], datos: m[2], creada: ahora() };
+  guardar();
+  return { id };
+});
+
+// Pública: el identificador es aleatorio y solo lo conoce quien ve el examen
+ruta('GET', '/api/imagenes/:id', null, ({ params }) => {
+  const img = db.imagenes[params.id];
+  if (!img) throw new ErrorTestGO(404, 'Imagen no encontrada');
+  return { binario: Buffer.from(img.datos, 'base64'), tipo: img.tipo };
+});
+
+// Borra las imágenes que ya no usa ningún examen ni el logo (las de la última hora se respetan:
+// pueden ser de un examen que se está editando y aún no se ha guardado)
+function limpiarImagenes() {
+  const usadas = new Set([db.config.centro?.logo]);
+  for (const ex of Object.values(db.examenes)) for (const p of ex.preguntas) if (p.imagen) usadas.add(p.imagen);
+  for (const [id, img] of Object.entries(db.imagenes)) {
+    if (!usadas.has(id) && ahora() - img.creada > 60 * 60 * 1000) delete db.imagenes[id];
+  }
+}
+
+// ---------- Datos del centro ----------
+
+const datosCentro = () => ({ nombre: db.config.centro?.nombre || '', logo: db.config.centro?.logo || null });
+
+ruta('GET', '/api/publico/centro', null, datosCentro);
+ruta('GET', '/api/profesor/centro', 'profesor', datosCentro);
+
+ruta('PUT', '/api/profesor/centro', 'profesor', ({ cuerpo }) => {
+  const logo = cuerpo.logo && db.imagenes[cuerpo.logo] ? cuerpo.logo : null;
+  db.config.centro = { nombre: String(cuerpo.nombre ?? '').trim().slice(0, 150), logo };
+  guardar();
+  return datosCentro();
 });
 
 ruta('GET', '/api/profesor/examenes/:E/intentos', 'profesor', ({ params, url }) => {
@@ -430,17 +477,11 @@ ruta('POST', '/api/profesor/examenes/:E/intentos/:A/accion', 'profesor', ({ para
   return a;
 });
 
+// Corrección a mano: notas, comentarios para el alumno y criterios de la rúbrica
 ruta('PUT', '/api/profesor/examenes/:E/intentos/:A/notas', 'profesor', ({ params, cuerpo }) => {
   const ex = examenOError(params.E);
   const a = intentoOError(params.E, params.A);
-  const notas = { ...(a.notasManual || {}) };
-  for (const p of ex.preguntas) {
-    if (!(p.id in (cuerpo.notasManual || {}))) continue;
-    const v = cuerpo.notasManual[p.id];
-    if (v === null || v === '') delete notas[p.id];
-    else notas[p.id] = N.acotar(v, 0, -p.puntos, p.puntos);
-  }
-  a.notasManual = notas;
+  Object.assign(a, N.limpiarCorreccion(ex, a, cuerpo));
   guardar();
   return a;
 });
@@ -568,6 +609,10 @@ const servidor = http.createServer(async (req, res) => {
     const seguro = req.headers['x-forwarded-proto'] === 'https' || !!req.socket.encrypted;
     const ctx = { req, url, seguro, params: url.pathname.match(r.re).groups || {}, cuerpo: await leerCuerpo(req) };
     const resultado = await r.manejador(ctx);
+    if (resultado?.binario) {
+      res.writeHead(200, { 'Content-Type': resultado.tipo, 'Cache-Control': 'public, max-age=31536000, immutable', ...CABECERAS_SEGURIDAD });
+      return res.end(resultado.binario);
+    }
     if (resultado?.cabeceras) return responderJSON(res, 200, resultado.cuerpo, resultado.cabeceras);
     responderJSON(res, 200, resultado);
   } catch (e) {
@@ -577,6 +622,7 @@ const servidor = http.createServer(async (req, res) => {
 });
 
 servidor.listen(PUERTO, () => {
+  limpiarImagenes();
   console.log(`\nTestGO funcionando en el puerto ${PUERTO}\n`);
   console.log(`  Profesor:  http://localhost:${PUERTO}/profesor`);
   for (const d of direccionesRed()) console.log(`  Alumnos:   http://${d}`);

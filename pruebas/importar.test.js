@@ -64,6 +64,12 @@ test('examen por partes: tipos, puntos, apartados y cabeceras', () => {
   assert.equal(preguntas[3].grupo, undefined, 'las viñetas de "Incluye:" no son apartados');
 });
 
+test('reconoce las preguntas de verdadero o falso', () => {
+  const { preguntas } = analizar(leerTexto('1. La memoria RAM es volátil.\na) Verdadero *\nb) Falso'));
+  assert.equal(preguntas[0].tipo, 'vf');
+  assert.equal(preguntas[0].correcta, 0);
+});
+
 test('reparte los puntos del ejercicio entre apartados que no dicen nada', () => {
   const { preguntas } = analizar(leerTexto('1. Caso práctico de redes. (3 puntos)\na) ¿Qué máscara usarías?\n_____\nb) ¿Cuántos equipos caben?\n_____\nc) Justifica la puerta de enlace.\n_____'));
   assert.equal(preguntas.length, 3);

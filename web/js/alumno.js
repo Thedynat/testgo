@@ -65,8 +65,19 @@ function pantallaEntrada(error = '', datos = {}) {
     boton,
   );
 
-  vaciar(app, h('div', { class: 'centrado' }, h('div', { class: 'tarjeta tarjeta-login' }, marca(true), formulario)));
+  const cabecera = h('div', {}, marca(true));
+  // El nombre y el logo del centro, si el profesor los ha puesto
+  api.centro?.().then(c => cabecera.append(bloqueCentro(c) || '')).catch(() => {});
+  vaciar(app, h('div', { class: 'centrado' }, h('div', { class: 'tarjeta tarjeta-login' }, cabecera, formulario)));
   (codigo.value ? nombre : codigo).focus();
+}
+
+function bloqueCentro(centro) {
+  if (!centro?.nombre && !centro?.logo) return null;
+  return h('div', { class: 'centro' },
+    centro.logo ? h('img', { src: api.urlImagen(centro.logo), alt: '' }) : null,
+    centro.nombre ? h('span', {}, centro.nombre) : null,
+  );
 }
 
 function pantallaPendiente() {
@@ -135,7 +146,9 @@ function pantallaInstrucciones() {
     }),
   }, 'Empezar el examen');
   vaciar(app, h('div', { class: 'centrado' }, h('div', { class: 'tarjeta', style: { width: 'min(620px, 100%)' } },
+    bloqueCentro(actual.centro),
     h('p', { class: 'suave pequeno' }, `Hola, ${intento.nombre}`),
+    examen.asignatura ? h('p', { class: 'asignatura' }, examen.asignatura) : null,
     h('h1', {}, examen.titulo),
     h('div', { class: 'metricas' },
       h('div', { class: 'metrica' }, h('span', {}, 'Tiempo'), h('b', {}, `${examen.duracion} min`)),
@@ -146,7 +159,12 @@ function pantallaInstrucciones() {
       h('b', {}, 'Antes de empezar'),
       h('ul', {},
         h('li', {}, 'El examen se abre a pantalla completa. No salgas de ella ni cambies de pestaña o de programa.'),
-        h('li', {}, examen.maxSalidas ? `Cada salida queda registrada. A la ${examen.maxSalidas}.ª el examen se bloquea y tendrás que avisar al profesor.` : 'Cada salida queda registrada y el profesor la verá.'),
+        h('li', {}, examen.maxSalidas === 1
+          ? h('b', {}, 'Si sales de la pantalla completa o cambias de pestaña una sola vez, el examen se bloquea y tendrás que avisar al profesor.')
+          : examen.maxSalidas
+            ? `Cada salida queda registrada. A la ${examen.maxSalidas}.ª el examen se bloquea y tendrás que avisar al profesor.`
+            : 'Cada salida queda registrada y el profesor la verá.'),
+        examen.marcaAgua ? h('li', {}, 'El examen lleva tu nombre y la fecha de fondo.') : null,
         h('li', {}, 'Tus respuestas se guardan solas mientras escribes.'),
         h('li', {}, 'El tiempo empieza a contar cuando pulses el botón. Al acabar, el examen se entrega solo.'),
         examen.penalizacion ? h('li', {}, `Las respuestas de test incorrectas restan ${N.numero(examen.penalizacion * 100)} % de su valor. Las que dejes en blanco no restan.`) : null,
@@ -181,7 +199,7 @@ const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const LETRA = j => String.fromCharCode(65 + j);
 const enRevision = () => paso === preguntas.length;
-const respondida = id => respuestas[id] !== undefined && respuestas[id] !== null && String(respuestas[id]).trim() !== '';
+const respondida = id => N.hayRespuesta(respuestas[id]);
 const palabras = texto => (String(texto || '').trim().match(/\S+/g) || []).length;
 const recortar = (texto, n = 110) => (texto.length > n ? `${texto.slice(0, n).trimEnd()}…` : texto).replace(/\s+/g, ' ');
 
@@ -238,7 +256,10 @@ function construirExamen() {
 
   vaciar(app,
     h('div', { class: 'barra-examen' },
-      h('div', { class: 'barra-titulo' }, h('h1', {}, examen.titulo), h('span', { id: 'resumen-respondidas', class: 'pequeno suave' })),
+      h('div', { class: 'barra-titulo' },
+        h('h1', {}, examen.titulo),
+        h('span', { class: 'pequeno suave' }, examen.asignatura ? `${examen.asignatura} · ` : '', h('span', { id: 'resumen-respondidas' })),
+      ),
       h('span', { id: 'salidas-restantes', class: 'chip aviso', hidden: true }),
       reloj,
       navegador,
@@ -248,11 +269,23 @@ function construirExamen() {
     pie,
     h('p', { class: 'atajos' }, h('kbd', {}, '←'), ' ', h('kbd', {}, '→'), ' cambiar de pregunta · ', h('kbd', {}, 'A'), ' ', h('kbd', {}, 'B'), ' ', h('kbd', {}, 'C'), '… elegir opción · ', h('kbd', {}, 'M'), ' marcar para revisar'),
   );
+  if (examen.marcaAgua) ponerMarcaAgua(intento.nombre, intento.inicio);
   pintarNavegador();
   pintarPaso();
   clearInterval(pantallaExamen.intervalo);
   pantallaExamen.intervalo = setInterval(actualizarReloj, 500);
 }
+
+// Nombre del alumno y fecha repetidos en diagonal por el fondo, para que se vea en cualquier foto o captura
+function ponerMarcaAgua(nombre, inicio) {
+  quitarMarcaAgua();
+  const texto = `${nombre} · ${new Date(inicio || Date.now()).toLocaleDateString('es-ES')}`;
+  const escapar = t => t.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="420" height="240"><text x="210" y="125" text-anchor="middle" transform="rotate(-24 210 120)" font-family="system-ui, sans-serif" font-size="17" font-weight="600" fill="rgba(12,18,48,0.075)">${escapar(texto)}</text></svg>`;
+  document.body.append(h('div', { class: 'marca-agua', 'aria-hidden': 'true', style: { backgroundImage: `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")` } }));
+}
+
+const quitarMarcaAgua = () => $$('.marca-agua').forEach(m => m.remove());
 
 function pintarNavegador() {
   vaciar(navegador,
@@ -304,43 +337,7 @@ function pintarPaso(direccion = 0) {
   if (enRevision()) return pintarRevision(direccion);
   const p = preguntas[paso];
   const bloqueado = actual.intento.estado !== 'en_curso';
-  let control;
-  let pieTarjeta = null;
-
-  if (p.tipo === 'test') {
-    control = h('div', { class: 'opciones', role: 'radiogroup', 'aria-labelledby': `enunciado-${p.id}` },
-      p.opciones.map((o, j) =>
-        h('label', { class: 'opcion' },
-          h('input', { type: 'radio', name: `p-${p.id}`, value: String(o.i), checked: respuestas[p.id] === o.i, disabled: bloqueado, onchange: () => responder(p.id, o.i) }),
-          h('span', { class: 'letra', 'aria-hidden': 'true' }, LETRA(j)),
-          h('span', { class: 'texto-opcion' }, o.texto),
-        ),
-      ),
-    );
-    pieTarjeta = h('button', { class: 'boton fantasma mini', type: 'button', disabled: bloqueado, onclick: () => {
-      $$(`input[name="p-${p.id}"]`).forEach(r => (r.checked = false));
-      responder(p.id, null);
-    } }, 'Borrar mi respuesta');
-  } else {
-    const contador = h('span', { class: 'contador', 'aria-live': 'polite' });
-    const contar = v => (contador.textContent = `${palabras(v)} ${palabras(v) === 1 ? 'palabra' : 'palabras'}`);
-    control = h('textarea', {
-      class: 'respuesta-alumno',
-      rows: p.tipo === 'corta' ? 3 : 10,
-      value: respuestas[p.id] ?? '',
-      maxlength: p.tipo === 'corta' ? 2000 : 20000,
-      spellcheck: false,
-      disabled: bloqueado,
-      placeholder: 'Escribe aquí tu respuesta',
-      'aria-labelledby': `enunciado-${p.id}`,
-      oninput: e => {
-        responder(p.id, e.target.value);
-        contar(e.target.value);
-      },
-    });
-    contar(control.value);
-    pieTarjeta = contador;
-  }
+  const { control, pieTarjeta, ayuda, foco } = controlPregunta(p, bloqueado);
 
   const marcada = marcadas.has(p.id);
   const tarjeta = h('section', { class: `tarjeta pregunta ${claseEntrada(direccion)}` },
@@ -353,7 +350,8 @@ function pintarPaso(direccion = 0) {
     ),
     p.contexto ? h('div', { class: 'contexto' }, p.contexto) : null,
     h('h2', { class: 'enunciado', id: `enunciado-${p.id}`, tabindex: '-1' }, p.apartado ? h('span', { class: 'letra-apartado' }, `${p.apartado})`) : null, p.enunciado),
-    p.tipo === 'test' ? h('p', { class: 'pequeno suave', style: { margin: '-4px 0 0' } }, 'Elige una respuesta.') : null,
+    p.imagen ? imagenPregunta(p.imagen) : null,
+    ayuda ? h('p', { class: 'pequeno suave', style: { margin: '-4px 0 0' } }, ayuda) : null,
     control,
     h('div', { class: 'fila entre' }, h('span'), pieTarjeta),
   );
@@ -369,10 +367,124 @@ function pintarPaso(direccion = 0) {
       paso === preguntas.length - 1 ? 'Revisar y entregar' : 'Siguiente', icono('derecha')),
   );
 
-  if (direccion) {
-    const foco = p.tipo === 'test' ? $(`#enunciado-${p.id}`, tarjeta) : control;
-    foco.focus({ preventScroll: true });
+  if (direccion) (foco || $(`#enunciado-${p.id}`, tarjeta)).focus({ preventScroll: true });
+}
+
+// El cuadro de respuesta de cada tipo de pregunta
+function controlPregunta(p, bloqueado) {
+  const r = respuestas[p.id];
+  const borrar = h('button', { class: 'boton fantasma mini', type: 'button', disabled: bloqueado, onclick: () => {
+    responder(p.id, null);
+    pintarPaso();
+  } }, 'Borrar mi respuesta');
+
+  if (p.tipo === 'test' || p.tipo === 'vf') {
+    return {
+      ayuda: 'Elige una respuesta.',
+      pieTarjeta: borrar,
+      control: h('div', { class: `opciones ${p.tipo === 'vf' ? 'opciones-vf' : ''}`, role: 'radiogroup', 'aria-labelledby': `enunciado-${p.id}` },
+        p.opciones.map((o, j) =>
+          h('label', { class: 'opcion' },
+            h('input', { type: 'radio', name: `p-${p.id}`, value: String(o.i), checked: r === o.i, disabled: bloqueado, onchange: () => responder(p.id, o.i) }),
+            h('span', { class: 'letra', 'aria-hidden': 'true' }, p.tipo === 'vf' ? o.texto[0] : LETRA(j)),
+            h('span', { class: 'texto-opcion' }, o.texto),
+          ),
+        ),
+      ),
+    };
   }
+
+  if (p.tipo === 'multiple') {
+    const elegidas = new Set(Array.isArray(r) ? r : []);
+    return {
+      ayuda: 'Puede haber varias correctas: marca todas las que lo sean. Las incorrectas marcadas restan.',
+      pieTarjeta: borrar,
+      control: h('div', { class: 'opciones', role: 'group', 'aria-labelledby': `enunciado-${p.id}` },
+        p.opciones.map((o, j) =>
+          h('label', { class: 'opcion casilla-opcion' },
+            h('input', { type: 'checkbox', value: String(o.i), checked: elegidas.has(o.i), disabled: bloqueado, onchange: e => {
+              const actuales = new Set(Array.isArray(respuestas[p.id]) ? respuestas[p.id] : []);
+              if (e.target.checked) actuales.add(o.i);
+              else actuales.delete(o.i);
+              responder(p.id, actuales.size ? [...actuales].sort((x, y) => x - y) : null);
+            } }),
+            h('span', { class: 'letra', 'aria-hidden': 'true' }, LETRA(j)),
+            h('span', { class: 'texto-opcion' }, o.texto),
+          ),
+        ),
+      ),
+    };
+  }
+
+  if (p.tipo === 'numerica') {
+    const entrada = h('input', {
+      type: 'text', inputmode: 'decimal', class: 'respuesta-numerica', value: r ?? '', maxlength: 30, autocomplete: 'off',
+      disabled: bloqueado, placeholder: '0', 'aria-labelledby': `enunciado-${p.id}`,
+      oninput: e => {
+        const v = e.target.value.replace(/[^\d.,\-\s]/g, '');
+        if (v !== e.target.value) e.target.value = v;
+        responder(p.id, v.trim() || null);
+      },
+    });
+    return {
+      ayuda: 'Escribe solo el número. Puedes usar coma o punto para los decimales.',
+      foco: entrada,
+      control: h('div', { class: 'fila' }, entrada, p.unidad ? h('span', { class: 'unidad' }, p.unidad) : null),
+    };
+  }
+
+  if (p.tipo === 'relacionar') {
+    const filas = Array.isArray(r) ? r : p.izquierda.map(() => null);
+    return {
+      ayuda: 'Elige para cada elemento de la izquierda su pareja de la derecha.',
+      pieTarjeta: borrar,
+      control: h('div', { class: 'relacionar' },
+        p.izquierda.map((texto, i) =>
+          h('div', { class: 'fila-relacionar' },
+            h('span', { class: 'izquierda' }, h('span', { class: 'letra-mini' }, i + 1), texto),
+            h('select', {
+              disabled: bloqueado, 'aria-label': `Pareja de ${texto}`, value: filas[i] === null ? '' : String(filas[i]),
+              onchange: e => {
+                const nuevas = Array.isArray(respuestas[p.id]) ? [...respuestas[p.id]] : p.izquierda.map(() => null);
+                nuevas[i] = e.target.value === '' ? null : Number(e.target.value);
+                responder(p.id, nuevas.some(v => v !== null) ? nuevas : null);
+              },
+            }, h('option', { value: '' }, 'Elige…'), p.derecha.map(d => h('option', { value: String(d.j) }, d.texto))),
+          ),
+        ),
+      ),
+    };
+  }
+
+  // Respuesta corta o desarrollo
+  const contador = h('span', { class: 'contador', 'aria-live': 'polite' });
+  const contar = v => (contador.textContent = `${palabras(v)} ${palabras(v) === 1 ? 'palabra' : 'palabras'}`);
+  const caja = h('textarea', {
+    class: 'respuesta-alumno',
+    rows: p.tipo === 'corta' ? 3 : 10,
+    value: r ?? '',
+    maxlength: p.tipo === 'corta' ? 2000 : 20000,
+    spellcheck: false,
+    disabled: bloqueado,
+    placeholder: 'Escribe aquí tu respuesta',
+    'aria-labelledby': `enunciado-${p.id}`,
+    oninput: e => {
+      responder(p.id, e.target.value);
+      contar(e.target.value);
+    },
+  });
+  contar(caja.value);
+  return { control: caja, pieTarjeta: contador, foco: caja };
+}
+
+// Imagen de la pregunta; al pulsarla se ve en grande
+function imagenPregunta(id) {
+  const src = api.urlImagen(id);
+  return h('button', { type: 'button', class: 'imagen-pregunta', 'aria-label': 'Ver la imagen en grande', onclick: () => {
+    const d = h('dialog', { class: 'visor-imagen', onclick: () => (d.close(), d.remove()) }, h('img', { src, alt: '' }));
+    document.body.append(d);
+    d.showModal();
+  } }, h('img', { src, alt: 'Imagen de la pregunta', loading: 'lazy' }));
 }
 
 function claseEntrada(direccion) {
@@ -428,14 +540,14 @@ function responder(id, valor) {
   const antes = respondida(id);
   if (valor === null || valor === '') delete respuestas[id];
   else respuestas[id] = valor;
-  if (antes !== respondida(id) || typeof valor === 'number') pintarNavegador();
+  if (antes !== respondida(id) || typeof valor !== 'string') pintarNavegador();
   programarGuardado();
 }
 
 // Atajos de teclado: flechas para moverse, letras o números para elegir opción, M para marcar
 function teclado(e) {
   if (!examenActivo() || capaBloqueo || document.querySelector('dialog[open]')) return;
-  if (e.altKey || e.ctrlKey || e.metaKey || e.target.matches('textarea, input[type="text"]')) return;
+  if (e.altKey || e.ctrlKey || e.metaKey || e.target.matches('textarea, input[type="text"], select')) return;
   const p = preguntas[paso];
   const tecla = e.key.toLowerCase();
   if (e.key === 'ArrowRight') {
@@ -446,14 +558,16 @@ function teclado(e) {
     irA(paso - 1);
   } else if (tecla === 'm' && p) {
     alternarMarca(p.id);
-  } else if (p?.tipo === 'test') {
-    const j = /^[a-h]$/.test(tecla) ? tecla.charCodeAt(0) - 97 : /^[1-9]$/.test(tecla) ? Number(tecla) - 1 : -1;
-    const radio = $$('.zona-paso input[type="radio"]')[j];
-    if (!radio) return;
+  } else if (p && N.CON_OPCIONES.has(p.tipo)) {
+    let j = /^[a-h]$/.test(tecla) ? tecla.charCodeAt(0) - 97 : /^[1-9]$/.test(tecla) ? Number(tecla) - 1 : -1;
+    if (p.tipo === 'vf' && (tecla === 'v' || tecla === 'f')) j = tecla === 'v' ? 0 : 1;
+    const casilla = $$('.zona-paso .opcion input')[j];
+    if (!casilla) return;
     e.preventDefault();
-    radio.checked = true;
-    radio.dispatchEvent(new Event('change', { bubbles: true }));
-    radio.focus({ preventScroll: true });
+    // En las de varias correctas, la tecla marca o desmarca
+    casilla.checked = casilla.type === 'checkbox' ? !casilla.checked : true;
+    casilla.dispatchEvent(new Event('change', { bubbles: true }));
+    casilla.focus({ preventScroll: true });
   }
 }
 
@@ -528,7 +642,9 @@ function actualizarBloqueo(bloqueado) {
       h('div', { class: 'tarjeta' },
         icono('candado', 'icono-grande'),
         h('h2', {}, 'Examen bloqueado'),
-        h('p', {}, actual.intento.bloqueadoPor === 'profesor' ? 'El profesor ha bloqueado tu examen.' : 'Has salido del examen demasiadas veces.'),
+        h('p', {}, actual.intento.bloqueadoPor === 'profesor'
+          ? 'El profesor ha bloqueado tu examen.'
+          : actual.examen.maxSalidas === 1 ? 'Has salido de la pantalla del examen.' : 'Has salido del examen demasiadas veces.'),
         h('p', { class: 'suave' }, 'Avisa al profesor. Tus respuestas están guardadas y podrás seguir cuando te desbloquee.'),
       ),
     );
@@ -612,11 +728,13 @@ function activarVigilancia() {
   }
   window.addEventListener('beforeunload', avisarAntesDeSalir);
   document.addEventListener('keydown', teclado);
-  setTimeout(() => revisarPresencia('Empezó el examen fuera de la pantalla completa'), 1000);
+  // Margen para que el navegador termine de poner la pantalla completa
+  setTimeout(() => revisarPresencia('No está en pantalla completa (recargó la página o no la aceptó)'), 2500);
 }
 
 function quitarVigilancia() {
   vigilando = false;
+  quitarMarcaAgua();
   for (const [evento, f] of Object.entries(manejadores)) {
     (evento === 'visibilitychange' || evento === 'fullscreenchange' ? document : window).removeEventListener(evento, f);
   }

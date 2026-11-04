@@ -35,6 +35,8 @@ async function pedir(metodo, ruta, cuerpo, cabeceras = {}) {
   return datos;
 }
 
+const urlImagen = id => `/api/imagenes/${encodeURIComponent(id)}`;
+
 // ---------- Alumno ----------
 
 let observador = null;
@@ -49,6 +51,8 @@ function emitir(estado) {
 
 export const alumno = {
   sesionGuardada: () => !!leerToken(),
+  centro: () => pedir('GET', '/api/publico/centro'),
+  urlImagen,
 
   async entrar(codigo, nombre) {
     const { token } = await pedir('POST', '/api/alumno/entrar', { codigo, nombre });
@@ -116,6 +120,10 @@ export const profesor = {
   salir: () => pedir('POST', '/api/profesor/salir', {}),
   cambiarPassword: password => pedir('PUT', '/api/profesor/password', { password }),
   direcciones: () => pedir('GET', '/api/profesor/direcciones'),
+  centro: () => pedir('GET', '/api/profesor/centro'),
+  guardarCentro: datos => pedir('PUT', '/api/profesor/centro', datos),
+  subirImagen: datos => pedir('POST', '/api/profesor/imagenes', { datos }).then(r => r.id),
+  urlImagen,
 
   listarExamenes: () => pedir('GET', '/api/profesor/examenes'),
   crearExamen: datos => pedir('POST', '/api/profesor/examenes', datos),
@@ -147,7 +155,8 @@ export const profesor = {
   intento: (E, A) => pedir('GET', it(E, A)),
   intentosCompletos: E => pedir('GET', `${ex(E)}/intentos?completo=1`).then(r => r.intentos),
   accion: (E, A, accion, datos) => pedir('POST', `${it(E, A)}/accion`, { accion, datos }),
-  guardarNotas: (E, A, notasManual) => pedir('PUT', `${it(E, A)}/notas`, { notasManual }),
+  // correccion: { notasManual, comentarios, rubricas }
+  guardarCorreccion: (E, A, correccion) => pedir('PUT', `${it(E, A)}/notas`, correccion),
   borrarIntento: (E, A) => pedir('DELETE', it(E, A)),
   resolverSolicitud: (E, S, aceptar) => pedir('POST', `${ex(E)}/solicitudes/${encodeURIComponent(S)}`, { aceptar }),
 };

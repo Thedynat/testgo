@@ -83,6 +83,29 @@ test('el prompt explica el formato y cambia según si la IA debe resolver', () =
   assert.equal(leerRespuestaIA(ejemplo).preguntas.length, 5, '3 preguntas sueltas y un ejercicio con 2 apartados');
 });
 
+test('lee los tipos nuevos: verdadero/falso, varias correctas, numérica, relacionar y criterios', () => {
+  const { preguntas } = leerRespuestaIA(`{"preguntas": [
+    {"tipo": "vf", "enunciado": "La RAM es volátil", "correcta": "verdadero"},
+    {"tipo": "multiple", "enunciado": "Periféricos de entrada", "opciones": ["Teclado", "Monitor", "Ratón"], "correctas": ["a", "c"]},
+    {"tipo": "numerica", "enunciado": "Tensión de la línea amarilla", "valor": 12, "tolerancia": 5, "unidad": "V"},
+    {"tipo": "numerica", "enunciado": "Resistencia", "valor": "220", "tolerancia_abs": 10},
+    {"tipo": "relacionar", "enunciado": "Relaciona", "pares": [["CPU", "Procesa"], ["RAM", "Memoria"]]},
+    {"tipo": "desarrollo", "enunciado": "Explica", "puntos": 2, "criterios": [{"texto": "Seguridad", "puntos": 1}, "Medida"]},
+    {"tipo": "test", "enunciado": "¿Es cierto?", "opciones": ["Verdadero", "Falso"], "correcta": "b"}
+  ]}`);
+  const [vf, mu, nu, nuAbs, re, de, vf2] = preguntas;
+  assert.equal(vf.tipo, 'vf');
+  assert.equal(vf.correcta, 0);
+  assert.deepEqual(mu.correctas, [0, 2]);
+  assert.deepEqual([nu.valor, nu.tolerancia, nu.modoTolerancia, nu.unidad], [12, 5, '%', 'V']);
+  assert.deepEqual([nuAbs.valor, nuAbs.tolerancia, nuAbs.modoTolerancia], [220, 10, 'abs']);
+  assert.deepEqual(re.pares, [{ izq: 'CPU', der: 'Procesa' }, { izq: 'RAM', der: 'Memoria' }]);
+  assert.equal(de.criterios.length, 2);
+  assert.equal(vf2.tipo, 'vf', 'un test de Verdadero/Falso se convierte en vf');
+  assert.equal(vf2.correcta, 1);
+  assert.ok(preguntas.every(p => !p.avisos.length));
+});
+
 test('separa los apartados de un ejercicio en preguntas con el enunciado común', () => {
   const { preguntas } = leerRespuestaIA(`{"preguntas": [
     {"tipo": "test", "enunciado": "¿Uno?", "opciones": ["a", "b"], "correcta": "a"},

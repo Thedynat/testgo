@@ -377,6 +377,8 @@ function convertir(bruta) {
     }
     if (correcta === null) avisos.push('No se ha encontrado cuál es la respuesta correcta: márcala tú.');
     if (formato.length > 1 && escritas.length !== 1) avisos.push('Había varias opciones en negrita o subrayadas.');
+    const vf = opciones.length === 2 && /^v(erdadero)?\.?$/i.test(opciones[0].texto) && /^f(also)?\.?$/i.test(opciones[1].texto);
+    if (vf) return { tipo: 'vf', enunciado, puntos, correcta, avisos: avisos.map(t => t.replace('cuál es la respuesta correcta', 'si es verdadera o falsa')) };
     return { tipo: 'test', enunciado, puntos, opciones: opciones.map(o => o.texto), correcta, avisos };
   }
 
@@ -470,10 +472,14 @@ Responde SOLO con un bloque de código \`\`\`json, sin explicaciones antes ni de
 }
 
 Reglas:
-1. "tipo" solo puede ser:
-   - "test": elegir una opción entre varias (también verdadero/falso).
-   - "corta": la respuesta es una palabra, una cifra o una frase muy breve que se puede comprobar automáticamente.
-   - "desarrollo": explicar, justificar, razonar, calcular paso a paso o casos prácticos.
+1. "tipo" solo puede ser uno de estos (los campos que lleva cada uno van entre paréntesis):
+   - "test": elegir UNA opción entre varias ("opciones" y "correcta": "b").
+   - "vf": verdadero o falso ("correcta": "verdadero" o "falso"; sin "opciones").
+   - "multiple": hay VARIAS opciones correctas ("opciones" y "correctas": ["a", "c"]).
+   - "corta": la respuesta es una palabra o una frase muy breve que se puede comprobar ("respuestas").
+   - "numerica": la respuesta es un número ("valor": 12, "tolerancia": 5 si se acepta un margen del 5 %, o "tolerancia_abs": 0.5 para ±0,5; y "unidad": "V" si la tiene).
+   - "relacionar": unir elementos de dos columnas ("pares": [["CPU", "Procesa los datos"], ["RAM", "Memoria temporal"]], cada pareja con el elemento de la izquierda y su pareja correcta).
+   - "desarrollo": explicar, justificar, razonar o casos prácticos. Si el examen indica criterios de corrección, añádelos: "criterios": [{"texto": "Menciona la seguridad", "puntos": 0.5}].
 2. Copia los enunciados y las opciones tal cual están en el examen, sin resumir, corregir ni traducir. No inventes preguntas, no te saltes ninguna y respeta el orden.
 3. En "opciones" escribe solo el texto de cada opción, sin la letra ni la casilla (nada de "a)", "B." o "☐").
 4. "correcta" es la letra de la opción correcta: "a" para la primera, "b" para la segunda, y así.
@@ -488,8 +494,12 @@ Reglas:
 }
 
 const TIPOS_IA = {
-  test: 'test', tipo_test: 'test', opcion_multiple: 'test', multiple: 'test', eleccion: 'test', verdadero_falso: 'test', vf: 'test',
-  corta: 'corta', respuesta_corta: 'corta', short: 'corta', breve: 'corta', completar: 'corta', numerica: 'corta',
+  test: 'test', tipo_test: 'test', opcion_multiple: 'test', eleccion: 'test', una_correcta: 'test',
+  vf: 'vf', verdadero_falso: 'vf', verdaderofalso: 'vf', true_false: 'vf',
+  multiple: 'multiple', varias: 'multiple', varias_correctas: 'multiple', multirespuesta: 'multiple', seleccion_multiple: 'multiple',
+  numerica: 'numerica', numero: 'numerica', calculo: 'numerica',
+  relacionar: 'relacionar', emparejar: 'relacionar', unir: 'relacionar', relacion: 'relacionar', columnas: 'relacionar',
+  corta: 'corta', respuesta_corta: 'corta', short: 'corta', breve: 'corta', completar: 'corta',
   desarrollo: 'desarrollo', abierta: 'desarrollo', larga: 'desarrollo', caso: 'desarrollo', caso_practico: 'desarrollo', ensayo: 'desarrollo', essay: 'desarrollo',
 };
 
@@ -562,10 +572,12 @@ function leerPreguntaIA(q, n, extra = {}) {
   const avisos = [];
   const original = textoDe(q.tipo).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[\s-]+/g, '_');
   const opciones = (Array.isArray(q.opciones) ? q.opciones : []).map(o => quitarLetra(typeof o === 'object' && o ? o.texto ?? o.text : o)).filter(Boolean);
-  let tipo = TIPOS_IA[original] || (opciones.length >= 2 ? 'test' : q.respuestas ? 'corta' : 'desarrollo');
-  if (tipo === 'test' && opciones.length < 2) {
+  let tipo = TIPOS_IA[original] || (q.pares ? 'relacionar' : q.valor !== undefined ? 'numerica' : opciones.length >= 2 ? 'test' : q.respuestas ? 'corta' : 'desarrollo');
+  // Un test con exactamente "Verdadero / Falso" es de verdadero o falso
+  if (tipo === 'test' && opciones.length === 2 && /^v(erdadero)?$/i.test(opciones[0]) && /^f(also)?$/i.test(opciones[1])) tipo = 'vf';
+  if ((tipo === 'test' || tipo === 'multiple') && opciones.length < 2) {
     tipo = 'desarrollo';
-    avisos.push('Venía como test pero sin opciones: se ha puesto como desarrollo.');
+    avisos.push('Venía con opciones pero no tenía al menos dos: se ha puesto como desarrollo.');
   }
   const puntos = Number(String(q.puntos ?? 1).replace(',', '.'));
   if (!Number.isFinite(puntos)) avisos.push('Los puntos no eran un número: se ha puesto 1.');
@@ -576,11 +588,46 @@ function leerPreguntaIA(q, n, extra = {}) {
     if (correcta === null) avisos.push('No trae la respuesta correcta: márcala tú.');
     return { ...limpiarPregunta({ ...base, opciones, correcta }), avisos };
   }
+  if (tipo === 'vf') {
+    const v = q.correcta ?? q.solucion ?? q.respuesta;
+    const t = normalizar(v);
+    // También vale la letra si venía como test con las opciones "Verdadero" (a) y "Falso" (b)
+    const correcta = v === true || v === 0 || /^(v|verdadero|true|cierto|si|a)$/.test(t) ? 0 : v === false || v === 1 || /^(f|falso|false|no|b)$/.test(t) ? 1 : null;
+    if (correcta === null) avisos.push('No trae si es verdadera o falsa: márcalo tú.');
+    return { ...limpiarPregunta({ ...base, correcta }), avisos };
+  }
+  if (tipo === 'multiple') {
+    const lista = q.correctas ?? q.correcta ?? q.soluciones ?? q.respuestas ?? [];
+    const correctas = (Array.isArray(lista) ? lista : [lista]).map(v => indiceCorrecta(v, opciones)).filter(i => i !== null);
+    if (!correctas.length) avisos.push('No trae las respuestas correctas: márcalas tú.');
+    return { ...limpiarPregunta({ ...base, opciones, correctas }), avisos };
+  }
+  if (tipo === 'numerica') {
+    const valor = Number(String(q.valor ?? q.solucion ?? q.respuesta ?? '').replace(',', '.').replace(/[^\d.\-eE]/g, ''));
+    const abs = q.tolerancia_abs ?? q.margen_abs;
+    const datos = { ...base, valor: Number.isFinite(valor) && String(q.valor ?? q.solucion ?? q.respuesta ?? '').trim() ? valor : null, unidad: textoDe(q.unidad) };
+    if (abs !== undefined) Object.assign(datos, { tolerancia: abs, modoTolerancia: 'abs' });
+    else if (q.tolerancia !== undefined) Object.assign(datos, { tolerancia: q.tolerancia, modoTolerancia: '%' });
+    if (datos.valor === null) avisos.push('No trae el valor correcto: escríbelo tú.');
+    return { ...limpiarPregunta(datos), avisos };
+  }
+  if (tipo === 'relacionar') {
+    // [["CPU", "Procesa"], ...], [{"izq": "CPU", "der": "Procesa"}, ...] o {"izquierda": [...], "derecha": [...]}
+    let pares = [];
+    if (Array.isArray(q.pares)) pares = q.pares.map(x => (Array.isArray(x) ? { izq: x[0], der: x[1] } : { izq: x?.izq ?? x?.izquierda, der: x?.der ?? x?.derecha }));
+    else if (Array.isArray(q.izquierda) && Array.isArray(q.derecha)) pares = q.izquierda.map((izq, i) => ({ izq, der: q.derecha[i] }));
+    pares = pares.map(x => ({ izq: textoDe(x.izq), der: textoDe(x.der) })).filter(x => x.izq || x.der);
+    if (pares.length < 2) avisos.push('Necesita al menos dos parejas: revísalas.');
+    return { ...limpiarPregunta({ ...base, pares }), avisos };
+  }
   if (tipo === 'corta') {
     const r = q.respuestas ?? q.respuesta ?? q.solucion;
     const respuestas = (Array.isArray(r) ? r : textoDe(r).split(/\s*[/;|]\s*/)).map(textoDe).filter(Boolean);
     if (!respuestas.length) avisos.push('No tiene respuestas aceptadas: añádelas o se corregirá a mano.');
     return { ...limpiarPregunta({ ...base, respuestas }), avisos };
   }
-  return { ...limpiarPregunta(base), avisos };
+  const criterios = (Array.isArray(q.criterios) ? q.criterios : [])
+    .map(c => (typeof c === 'string' ? { texto: c, puntos: 0 } : { texto: textoDe(c?.texto ?? c?.criterio), puntos: Number(String(c?.puntos ?? 0).replace(',', '.')) || 0 }))
+    .filter(c => c.texto);
+  return { ...limpiarPregunta({ ...base, criterios }), avisos };
 }
