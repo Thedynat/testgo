@@ -264,6 +264,14 @@ rutaAlumno('guardar', ({ ex, a, cuerpo }) => {
   if (N.puedeResponder(a, ahora())) a.respuestas = N.limpiarRespuestas(ex.preguntas, a.orden, cuerpo.respuestas);
 });
 
+// En qué pregunta está el alumno (para el plano de la clase y la vista en directo)
+rutaAlumno('posicion', ({ a, cuerpo }) => {
+  if (a.estado === 'entregado') return;
+  const total = (a.orden || []).length;
+  const i = Math.round(N.acotar(cuerpo.indice, 0, 0, total));
+  a.posicion = { indice: i, total, etiqueta: String(cuerpo.etiqueta ?? '').slice(0, 10), t: ahora() };
+});
+
 rutaAlumno('incidencia', ({ ex, a, cuerpo }) => {
   const tipo = String(cuerpo.tipo || '');
   if (!N.TIPOS_INCIDENCIA.has(tipo)) throw new ErrorTestGO(400, 'Tipo de incidencia no válido');

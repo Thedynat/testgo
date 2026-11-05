@@ -22,6 +22,9 @@ TestGO es una aplicación web para hacer exámenes en clase desde el ordenador o
 
 **Para el profesor**
 
+Cada examen se prepara en cinco pasos, siempre en el mismo orden: **1 Preguntas · 2 Ajustes · 3 Revisar y abrir · 4 En directo · 5 Corregir**. La primera vez, una guía de tres pantallas explica cómo funciona.
+
+- **Preguntas:** un índice a la izquierda (se reordena arrastrando y marca las preguntas incompletas) y solo la pregunta que editas a la derecha. Incluye la vista del alumno, *Ajustar a 10* para que los puntos sumen 10, y *Deshacer* al borrar. Un examen nuevo puede empezar escribiendo, importando o copiando las preguntas de otro examen.
 - **Siete tipos de pregunta,** todos con imagen opcional (por ejemplo, para identificar componentes de una placa base):
   - **Test** y **verdadero o falso**.
   - **Varias correctas:** las correctas marcadas suman y las incorrectas restan.
@@ -35,11 +38,16 @@ TestGO es una aplicación web para hacer exámenes en clase desde el ordenador o
   - Desde **Word o PDF**: TestGO separa las preguntas, opciones, soluciones y puntos, y quita las líneas para responder y las cabeceras de página.
   - **Con ayuda de una IA** (ChatGPT, Gemini, Claude…): TestGO te da las instrucciones, la IA convierte el examen y tú pegas el resultado.
   - Antes de importar, todo pasa por una pantalla de revisión.
-- **Ajustes del examen:** asignatura, duración, preguntas al azar por alumno, barajar preguntas y opciones, penalización por fallo en test y si el alumno ve su nota al entregar.
+- **Ajustes del examen:** eliges el tipo (*Examen*, *Control suave*, *Repaso* o *Personalizado*) y TestGO pone el control antichuleta por ti y explica en una frase qué pasará. También: asignatura, duración, preguntas al azar por alumno y penalización por fallo en test.
+- **Revisar y abrir:** una lista de comprobación antes de abrir el examen (preguntas incompletas, duración, qué hará el control), la vista del alumno y el código en grande para proyectarlo al abrir.
 - **Control antichuleta:** registra cuándo el alumno sale de la pantalla completa, cambia de pestaña, copia o pega. Por defecto, **el examen se bloquea a la primera salida**; el profesor puede cambiarlo o desbloquearlo desde el panel.
 - **Marca de agua** opcional: el nombre del alumno y la fecha de fondo en todo el examen, para que cualquier foto o captura diga de quién es.
 - **Tu centro:** el nombre y el logo del instituto salen en la entrada de los alumnos, en sus exámenes y en los PDF.
-- **En directo:** quién ha entrado, su progreso, el tiempo, las salidas y la última incidencia. Desde ahí puedes bloquear, desbloquear, dar o quitar tiempo, recoger o reabrir un examen, y permitir que un alumno vuelva a entrar desde otro equipo.
+- **En directo:**
+  - **Arriba:** el tiempo hasta que acabe el último y cuántos alumnos hay en curso, entregados y bloqueados, con *+5 min a todos*, *Recoger todos* y un aviso sonoro opcional cuando alguien se bloquea.
+  - **Necesita tu atención:** los bloqueos (con *Desbloquear*), las peticiones para volver a entrar desde otro equipo y los alumnos sin conexión.
+  - **Plano de la clase:** las mesas en filas y columnas. En cada una se ve el nombre del alumno, el tiempo que le queda, por qué pregunta va, sus salidas y si está bloqueado o ha entregado. Los alumnos se colocan arrastrándolos, pulsando el alumno y luego su mesa (en tablet) o por orden de llegada.
+  - **Tarjetas o tabla:** con búsqueda y filtros. Desde la ficha de cada alumno puedes bloquear, desbloquear, dar o quitar tiempo, y recoger o reabrir su examen.
 - **Mostrar a la clase:** la dirección y el código en grande para proyectarlos.
 - **Resultados:** nota media, aprobados, pendientes de corregir y porcentaje de acierto por pregunta. *Empezar a corregir* recorre uno a uno los alumnos que tienen preguntas por corregir a mano.
 - **Exportar:** el examen de cada alumno (enunciados con su respuesta debajo) en **Markdown** o **PDF**, todos a la vez en un **ZIP**, y las notas en **CSV** para Excel.

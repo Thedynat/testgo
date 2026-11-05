@@ -41,14 +41,25 @@ export function marca(grande = false, href = '/') {
 }
 
 let contenedorNotificaciones = null;
-export function notificar(texto, tipo = '') {
+// accion: { texto, alPulsar } añade un botón al aviso, por ejemplo "Deshacer"
+export function notificar(texto, tipo = '', accion = null) {
   if (!contenedorNotificaciones) {
     contenedorNotificaciones = h('div', { class: 'notificaciones', role: 'status', 'aria-live': 'polite' });
     document.body.append(contenedorNotificaciones);
   }
-  const n = h('div', { class: `notificacion ${tipo}` }, texto);
+  // Dentro de un <dialog> abierto el aviso tiene que ir en la capa superior, o queda detrás
+  const capa = document.querySelector('dialog[open]');
+  if (capa && contenedorNotificaciones.parentNode !== capa) capa.append(contenedorNotificaciones);
+  else if (!capa && contenedorNotificaciones.parentNode !== document.body) document.body.append(contenedorNotificaciones);
+  const n = h('div', { class: `notificacion ${tipo}` },
+    h('span', {}, texto),
+    accion ? h('button', { type: 'button', class: 'accion-notificacion', onclick: () => {
+      n.remove();
+      accion.alPulsar();
+    } }, accion.texto) : null,
+  );
   contenedorNotificaciones.append(n);
-  setTimeout(() => n.remove(), tipo === 'error' ? 6000 : 3500);
+  setTimeout(() => n.remove(), accion ? 7000 : tipo === 'error' ? 6000 : 3500);
 }
 
 export const notificarError = e => notificar(e?.message || String(e), 'error');
@@ -181,6 +192,11 @@ const ICONOS = {
   refrescar: 'M20 11a8 8 0 0 0-14.9-3M4 5v3h3M4 13a8 8 0 0 0 14.9 3M20 19v-3h-3',
   x: 'M18 6 6 18M6 6l12 12',
   imagen: 'M4 5h16v14H4zM4 15l4-4 5 5M14 14l2-2 4 4M15.5 8.5h.01',
+  campana: 'M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4',
+  mesa: 'M3 9h18M5 9v10M19 9v10M8 5h8v4H8z',
+  cuadricula: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+  lista: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+  guia: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01',
   escuela: 'M3 10 12 5l9 5-9 5zM7 12v4c0 1 2 3 5 3s5-2 5-3v-4',
   chispa: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7z',
   abajo: 'm6 9 6 6 6-6',

@@ -32,7 +32,64 @@ export const AJUSTES = {
   barajar: true,
   mostrarNota: false,
   marcaAgua: false,
+  modo: '',
+  plano: null,
 };
+
+// Modos ya hechos para no tener que entender cada ajuste
+export const MODOS = {
+  examen: {
+    nombre: 'Examen',
+    descripcion: 'Para evaluar. Control estricto.',
+    ajustes: { maxSalidas: 1, barajar: true, mostrarNota: false, marcaAgua: true },
+  },
+  suave: {
+    nombre: 'Control suave',
+    descripcion: 'Para controles cortos en clase.',
+    ajustes: { maxSalidas: 3, barajar: true, mostrarNota: true, marcaAgua: false },
+  },
+  repaso: {
+    nombre: 'Repaso',
+    descripcion: 'Para practicar. Sin bloqueos.',
+    ajustes: { maxSalidas: 0, barajar: false, mostrarNota: true, marcaAgua: false },
+  },
+  personalizado: {
+    nombre: 'Personalizado',
+    descripcion: 'Eliges tú cada opción.',
+    ajustes: {},
+  },
+};
+
+// Lo que hace cada ajuste de control, explicado en una frase
+export function explicarControl(ex) {
+  return [
+    ex.maxSalidas === 0
+      ? 'Si un alumno sale de la pantalla del examen, queda registrado pero no se bloquea.'
+      : ex.maxSalidas === 1
+        ? 'Si un alumno sale de la pantalla del examen una sola vez, se bloquea hasta que lo desbloquees.'
+        : `Si un alumno sale ${ex.maxSalidas} veces de la pantalla del examen, se bloquea hasta que lo desbloquees.`,
+    ex.barajar ? 'Cada alumno ve las preguntas y las opciones en un orden distinto.' : 'Todos ven las preguntas en el mismo orden.',
+    ex.mostrarNota ? 'El alumno ve su nota al entregar.' : 'El alumno no ve su nota al entregar.',
+    ex.marcaAgua ? 'Su nombre y la fecha salen de fondo en todo el examen.' : 'Sin marca de agua.',
+  ];
+}
+
+// Plano de la clase: filas × columnas y qué alumno (por la clave de su nombre) se sienta en cada mesa
+function limpiarPlano(plano) {
+  if (!plano || typeof plano !== 'object') return null;
+  const filas = Math.round(acotar(plano.filas, 5, 1, 12));
+  const columnas = Math.round(acotar(plano.columnas, 6, 1, 12));
+  const puestos = {};
+  const usados = new Set();
+  for (const [sitio, clave] of Object.entries(plano.puestos || {})) {
+    const m = /^(\d+)-(\d+)$/.exec(sitio);
+    const valor = String(clave ?? '').slice(0, 80);
+    if (!m || Number(m[1]) >= filas || Number(m[2]) >= columnas || !valor || usados.has(valor)) continue;
+    usados.add(valor);
+    puestos[sitio] = valor;
+  }
+  return { filas, columnas, puestos };
+}
 
 export class ErrorTestGO extends Error {
   constructor(estado, mensaje, codigo = '') {
@@ -202,6 +259,8 @@ export function limpiarExamen(datos = {}, previo = {}) {
     titulo: String(datos.titulo ?? base.titulo).trim().slice(0, 200) || 'Examen sin título',
     asignatura: String(datos.asignatura ?? base.asignatura ?? '').trim().slice(0, 120),
     marcaAgua: si('marcaAgua', Boolean),
+    modo: MODOS[datos.modo] ? datos.modo : MODOS[base.modo] ? base.modo : '',
+    plano: datos.plano !== undefined ? limpiarPlano(datos.plano) : base.plano ?? null,
     duracion: Math.round(acotar(datos.duracion, base.duracion, 1, 600)),
     numPreguntas: Math.round(acotar(datos.numPreguntas, base.numPreguntas, 0, 500)),
     maxSalidas: Math.round(acotar(datos.maxSalidas, base.maxSalidas, 0, 50)),

@@ -244,6 +244,7 @@ function construirExamen() {
   paso = 0;
   marcadas = new Set();
   leerLocal();
+  avisarPosicion();
 
   reloj = h('span', { class: 'reloj', role: 'timer', 'aria-label': 'Tiempo restante' });
   navegador = h('nav', { class: 'pasos', 'aria-label': 'Preguntas del examen' });
@@ -320,12 +321,22 @@ function pintarNavegador() {
   }
 }
 
+// El profesor ve en el plano de la clase por qué pregunta va cada alumno (se avisa al dejar de moverse)
+let temporizadorPosicion = null;
+function avisarPosicion() {
+  clearTimeout(temporizadorPosicion);
+  temporizadorPosicion = setTimeout(() => {
+    api.posicion?.(paso, enRevision() ? 'Revisión' : numeros[paso]).catch(() => {});
+  }, 800);
+}
+
 function irA(i) {
   if (i < 0 || i > preguntas.length || i === paso) return;
   const direccion = i > paso ? 1 : -1;
   if (pendienteGuardar) guardarAhora();
   paso = i;
   guardarLocal();
+  avisarPosicion();
   pintarNavegador();
   pintarPaso(direccion);
   // Si el principio de la pregunta queda debajo de la barra fija, se vuelve arriba

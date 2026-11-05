@@ -86,6 +86,25 @@ test('corrección a mano con rúbrica y comentarios', () => {
   assert.deepEqual(N.limpiarCorreccion(ex, c, { comentarios: { [p.id]: '' } }).comentarios, {});
 });
 
+test('el plano de la clase se guarda limpio: mesas dentro del tamaño y un alumno por mesa', () => {
+  const ex = N.limpiarExamen({ plano: { filas: 3, columnas: 40, puestos: { '0-0': 'laura', '0-1': 'laura', '2-5': 'pablo', '9-9': 'ana', x: 'mal' } } });
+  assert.equal(ex.plano.filas, 3);
+  assert.equal(ex.plano.columnas, 12, 'como mucho 12 columnas');
+  assert.deepEqual(ex.plano.puestos, { '0-0': 'laura', '2-5': 'pablo' });
+  assert.equal(N.datosPublicos(ex).plano, undefined, 'el plano no llega a los alumnos');
+  // Si no se manda, se conserva el que había
+  assert.deepEqual(N.limpiarExamen({ titulo: 'Otro' }, ex).plano, ex.plano);
+});
+
+test('los modos ponen los ajustes de control y se explican en una frase', () => {
+  const ex = N.limpiarExamen({ modo: 'repaso', ...N.MODOS.repaso.ajustes });
+  assert.equal(ex.modo, 'repaso');
+  assert.equal(ex.maxSalidas, 0);
+  assert.match(N.explicarControl(ex)[0], /no se bloquea/);
+  assert.match(N.explicarControl(N.limpiarExamen({ modo: 'examen', ...N.MODOS.examen.ajustes }))[0], /una sola vez/);
+  assert.equal(N.limpiarExamen({ modo: 'inventado' }).modo, '');
+});
+
 test('con alumnos dentro no se pueden cambiar las parejas', () => {
   const ex = examen([{ tipo: 'relacionar', enunciado: 'R', pares: [{ izq: 'a', der: 'b' }, { izq: 'c', der: 'd' }] }]);
   const otra = structuredClone(ex);
