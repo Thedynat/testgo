@@ -120,7 +120,8 @@ function caducar(a) {
   if (N.tiempoAgotado(a, ahora())) entregar(a, 'Tiempo agotado', N.limiteDe(a));
 }
 
-const sinIncidencias = ({ incidencias, ...resto }) => resto;
+// Para el directo, que se pide cada 3 s: sin las incidencias ni el Notebook, que pueden ocupar mucho
+const ligero = ({ incidencias, notebook, ...resto }) => resto;
 
 function codigoUnico(E) {
   for (let i = 0; i < 50; i++) {
@@ -143,6 +144,7 @@ function estadoAlumno(ex, a) {
     minutosExtra: a.minutosExtra,
     orden: a.orden,
     respuestas: a.respuestas,
+    notebook: a.notebook || '',
     salidas: a.salidas,
     baseSalidas: a.baseSalidas,
     bloqueadoPor: a.bloqueadoPor || null,
@@ -262,6 +264,7 @@ rutaAlumno('comenzar', ({ a }) => {
 
 rutaAlumno('guardar', ({ ex, a, cuerpo }) => {
   if (N.puedeResponder(a, ahora())) a.respuestas = N.limpiarRespuestas(ex.preguntas, a.orden, cuerpo.respuestas);
+  if (N.puedeResponder(a, ahora()) && cuerpo.notebook !== undefined) a.notebook = N.limpiarNotebook(cuerpo.notebook);
 });
 
 // En qué pregunta está el alumno (para el plano de la clase y la vista en directo)
@@ -285,6 +288,7 @@ rutaAlumno('entregar', ({ ex, a, cuerpo }) => {
   if (a.estado === 'bloqueado') throw new ErrorTestGO(403, 'El examen está bloqueado. Avisa al profesor.');
   if (a.estado !== 'en_curso' || !a.inicio) return;
   if (N.puedeResponder(a, ahora())) a.respuestas = N.limpiarRespuestas(ex.preguntas, a.orden, cuerpo.respuestas);
+  if (N.puedeResponder(a, ahora()) && cuerpo.notebook !== undefined) a.notebook = N.limpiarNotebook(cuerpo.notebook);
   entregar(a, cuerpo.automatico ? 'Entregado automáticamente al acabar el tiempo' : 'Entregado por el alumno');
 });
 
@@ -462,7 +466,7 @@ ruta('GET', '/api/profesor/examenes/:E/intentos', 'profesor', ({ params, url }) 
   const completo = url.searchParams.get('completo') === '1';
   return {
     ahora: ahora(),
-    intentos: intentos.map(a => (completo ? a : sinIncidencias(a))),
+    intentos: intentos.map(a => (completo ? a : ligero(a))),
     solicitudes: Object.values(db.solicitudes[ex.id] || {}).filter(s => !s.aceptadaPara),
   };
 });

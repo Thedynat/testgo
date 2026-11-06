@@ -96,6 +96,12 @@ test('el plano de la clase se guarda limpio: mesas dentro del tamaño y un alumn
   assert.deepEqual(N.limpiarExamen({ titulo: 'Otro' }, ex).plano, ex.plano);
 });
 
+test('el Notebook guarda texto libre con un tamaño máximo', () => {
+  assert.equal(N.limpiarNotebook('Acordarme: RAM volátil'), 'Acordarme: RAM volátil');
+  assert.equal(N.limpiarNotebook(null), '');
+  assert.equal(N.limpiarNotebook('x'.repeat(N.MAX_NOTEBOOK + 50)).length, N.MAX_NOTEBOOK);
+});
+
 test('los modos ponen los ajustes de control y se explican en una frase', () => {
   const ex = N.limpiarExamen({ modo: 'repaso', ...N.MODOS.repaso.ajustes });
   assert.equal(ex.modo, 'repaso');

@@ -18,6 +18,7 @@ TestGO es una aplicación web para hacer exámenes en clase desde el ordenador o
 - Una pregunta por pantalla, con navegador de preguntas, *Marcar para revisar* y una pantalla de revisión antes de entregar.
 - Atajos de teclado: <kbd>←</kbd> <kbd>→</kbd> para moverse y <kbd>A</kbd> <kbd>B</kbd> <kbd>C</kbd> para elegir opción.
 - Las respuestas se guardan solas. Si se recarga la página, vuelve a la misma pregunta.
+- Un **Notebook** debajo del temporizador: una hoja en blanco para apuntar ideas, cálculos o lo que no quiera olvidar. Se guarda sola y no cuenta para la nota.
 - Avisos cuando quedan 5 minutos y 1 minuto. Al acabar el tiempo, el examen se entrega solo.
 
 **Para el profesor**

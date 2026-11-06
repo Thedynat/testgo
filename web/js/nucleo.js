@@ -438,6 +438,10 @@ export const tiempoAgotado = (a, ahora) => a.estado !== 'entregado' && !!a.inici
 export const salidasDesde = a => (a.salidas || 0) - (a.baseSalidas || 0);
 export const puedeResponder = (a, ahora) => a.estado === 'en_curso' && !!a.inicio && ahora < limiteDe(a) + 30000;
 
+// Notebook: la hoja en blanco del alumno durante el examen. No se corrige
+export const MAX_NOTEBOOK = 20000;
+export const limpiarNotebook = texto => String(texto ?? '').slice(0, MAX_NOTEBOOK);
+
 export function limpiarRespuestas(preguntas, orden, respuestas) {
   const porId = new Map(preguntas.map(p => [p.id, p]));
   const permitidas = new Set((orden || []).map(o => o.id));

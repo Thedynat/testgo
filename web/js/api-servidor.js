@@ -100,11 +100,11 @@ export const alumno = {
   },
 
   comenzar: () => conToken('POST', '/api/alumno/comenzar', {}).then(emitir),
-  guardar: respuestas => conToken('POST', '/api/alumno/guardar', { respuestas }).then(emitir),
+  guardar: (respuestas, notebook) => conToken('POST', '/api/alumno/guardar', { respuestas, notebook }).then(emitir),
   // indice = preguntas.length cuando está en la pantalla de revisión
   posicion: (indice, etiqueta) => conToken('POST', '/api/alumno/posicion', { indice, etiqueta }),
   incidencia: (tipo, detalle) => conToken('POST', '/api/alumno/incidencia', { tipo, detalle }).then(emitir),
-  entregar: (respuestas, automatico) => conToken('POST', '/api/alumno/entregar', { respuestas, automatico }).then(emitir),
+  entregar: (respuestas, automatico, notebook) => conToken('POST', '/api/alumno/entregar', { respuestas, automatico, notebook }).then(emitir),
   olvidar: () => guardarToken(''),
 };
 

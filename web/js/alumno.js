@@ -9,6 +9,7 @@ const ESPERA_GUARDADO_MS = 3000;
 let actual = null; // último estado recibido: { examen, intento, nota, desfase }
 let pantalla = '';
 let respuestas = {};
+let notebook = ''; // hoja en blanco del alumno; no se corrige
 let respuestasCargadas = false;
 let pendienteGuardar = false;
 let temporizadorGuardado = null;
@@ -123,6 +124,7 @@ function alCambiar(estado) {
   const { intento } = estado;
   if (!respuestasCargadas) {
     respuestas = { ...(intento.respuestas || {}) };
+    notebook = intento.notebook || '';
     respuestasCargadas = true;
   }
   if (pendienteGuardar && estadoGuardado.textContent.startsWith('Sin conexión')) programarGuardado(0);
@@ -193,6 +195,8 @@ let pie = null;
 let preguntas = [];
 let numeros = []; // "1", "2", "9a", "9b"...
 let paso = 0; // índice de la pregunta; preguntas.length es la pantalla de revisión
+let enNotebook = false; // el Notebook se abre encima del paso actual, sin cambiarlo
+let botonNotebook = null;
 let marcadas = new Set();
 const avisosTiempo = new Set();
 const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -242,11 +246,13 @@ function construirExamen() {
   preguntas = N.vistaPreguntas(examen.preguntas, intento.orden);
   numeros = N.etiquetas(preguntas);
   paso = 0;
+  enNotebook = false;
   marcadas = new Set();
   leerLocal();
   avisarPosicion();
 
   reloj = h('span', { class: 'reloj', role: 'timer', 'aria-label': 'Tiempo restante' });
+  botonNotebook = h('button', { class: 'boton mini boton-notebook', type: 'button', 'aria-pressed': 'false', onclick: alternarNotebook }, icono('lapiz'), 'Notebook');
   navegador = h('nav', { class: 'pasos', 'aria-label': 'Preguntas del examen' });
   zonaPaso = h('div', { class: 'zona-paso' });
   pie = h('div', { class: 'pie-examen' });
@@ -262,7 +268,7 @@ function construirExamen() {
         h('span', { class: 'pequeno suave' }, examen.asignatura ? `${examen.asignatura} · ` : '', h('span', { id: 'resumen-respondidas' })),
       ),
       h('span', { id: 'salidas-restantes', class: 'chip aviso', hidden: true }),
-      reloj,
+      h('div', { class: 'reloj-notebook' }, reloj, botonNotebook),
       navegador,
     ),
     avisoPantallaCompleta,
@@ -293,10 +299,11 @@ function pintarNavegador() {
     preguntas.map((p, i) => {
       const hecha = respondida(p.id);
       const marcada = marcadas.has(p.id);
+      const esActual = i === paso && !enNotebook;
       return h('button', {
         type: 'button',
-        class: `paso ${i === paso ? 'actual' : ''} ${hecha ? 'hecha' : ''} ${marcada ? 'marcada' : ''}`,
-        'aria-current': i === paso ? 'step' : null,
+        class: `paso ${esActual ? 'actual' : ''} ${hecha ? 'hecha' : ''} ${marcada ? 'marcada' : ''}`,
+        'aria-current': esActual ? 'step' : null,
         'aria-label': `Pregunta ${numeros[i]}${hecha ? ', respondida' : ', sin responder'}${marcada ? ', marcada para revisar' : ''}`,
         title: `Pregunta ${numeros[i]}`,
         onclick: () => irA(i),
@@ -304,8 +311,8 @@ function pintarNavegador() {
     }),
     h('button', {
       type: 'button',
-      class: `paso revisar ${enRevision() ? 'actual' : ''}`,
-      'aria-current': enRevision() ? 'step' : null,
+      class: `paso revisar ${enRevision() && !enNotebook ? 'actual' : ''}`,
+      'aria-current': enRevision() && !enNotebook ? 'step' : null,
       'aria-label': 'Revisar y entregar',
       title: 'Revisar y entregar',
       onclick: () => irA(preguntas.length),
@@ -315,6 +322,8 @@ function pintarNavegador() {
   const resumen = $('#resumen-respondidas');
   if (resumen) resumen.textContent = `${hechas} de ${preguntas.length} respondidas`;
   // Centrar el botón actual sin mover la página (scrollIntoView desplazaría también la ventana)
+  botonNotebook.classList.toggle('primario', enNotebook);
+  botonNotebook.setAttribute('aria-pressed', String(enNotebook));
   const boton = navegador.querySelector('.actual');
   if (boton && navegador.scrollWidth > navegador.clientWidth) {
     navegador.scrollLeft = boton.offsetLeft - navegador.clientWidth / 2 + boton.offsetWidth / 2;
@@ -326,25 +335,40 @@ let temporizadorPosicion = null;
 function avisarPosicion() {
   clearTimeout(temporizadorPosicion);
   temporizadorPosicion = setTimeout(() => {
-    api.posicion?.(paso, enRevision() ? 'Revisión' : numeros[paso]).catch(() => {});
+    api.posicion?.(paso, enNotebook ? 'Notebook' : enRevision() ? 'Revisión' : numeros[paso]).catch(() => {});
   }, 800);
 }
 
 function irA(i) {
-  if (i < 0 || i > preguntas.length || i === paso) return;
-  const direccion = i > paso ? 1 : -1;
+  if (i < 0 || i > preguntas.length || (i === paso && !enNotebook)) return;
+  const direccion = i === paso ? 0 : i > paso ? 1 : -1;
   if (pendienteGuardar) guardarAhora();
+  enNotebook = false;
   paso = i;
   guardarLocal();
   avisarPosicion();
   pintarNavegador();
   pintarPaso(direccion);
-  // Si el principio de la pregunta queda debajo de la barra fija, se vuelve arriba
+  volverArriba();
+}
+
+function alternarNotebook() {
+  if (pendienteGuardar) guardarAhora();
+  enNotebook = !enNotebook;
+  avisarPosicion();
+  pintarNavegador();
+  pintarPaso();
+  volverArriba();
+}
+
+// Si el principio de la página queda debajo de la barra fija, se vuelve arriba
+function volverArriba() {
   const barra = $('.barra-examen').getBoundingClientRect().bottom;
   if (zonaPaso.getBoundingClientRect().top < barra + 8) window.scrollTo({ top: 0, behavior: sinMovimiento ? 'auto' : 'smooth' });
 }
 
 function pintarPaso(direccion = 0) {
+  if (enNotebook) return pintarNotebook();
   if (enRevision()) return pintarRevision(direccion);
   const p = preguntas[paso];
   const bloqueado = actual.intento.estado !== 'en_curso';
@@ -538,6 +562,38 @@ function pintarRevision(direccion = 0) {
   if (direccion) $('#titulo-revision')?.focus({ preventScroll: true });
 }
 
+// Una hoja en blanco para apuntar lo que el alumno no quiera olvidar. Se guarda sola y no cuenta para la nota
+function pintarNotebook() {
+  const bloqueado = actual.intento.estado !== 'en_curso';
+  const hoja = h('textarea', {
+    class: 'respuesta-alumno hoja-notebook',
+    rows: 16,
+    value: notebook,
+    maxlength: N.MAX_NOTEBOOK,
+    spellcheck: false,
+    disabled: bloqueado,
+    placeholder: 'Apunta aquí lo que quieras: ideas, cálculos, cosas para no olvidar…',
+    'aria-labelledby': 'titulo-notebook',
+    oninput: e => {
+      if (actual?.intento.estado !== 'en_curso') return;
+      notebook = e.target.value;
+      programarGuardado();
+    },
+  });
+  vaciar(zonaPaso, h('section', { class: 'tarjeta pregunta' },
+    h('div', { class: 'fila entre' },
+      h('h2', { class: 'meta', id: 'titulo-notebook', style: { margin: 0 } }, 'Notebook'),
+      h('span', { class: 'chip sin-punto' }, 'No cuenta para la nota'),
+    ),
+    hoja,
+  ));
+  vaciar(pie,
+    h('button', { class: 'boton primario', type: 'button', onclick: alternarNotebook },
+      icono('izquierda'), enRevision() ? 'Volver a la revisión' : `Volver a la pregunta ${numeros[paso]}`),
+  );
+  hoja.focus({ preventScroll: true });
+}
+
 function alternarMarca(id) {
   if (marcadas.has(id)) marcadas.delete(id);
   else marcadas.add(id);
@@ -557,7 +613,7 @@ function responder(id, valor) {
 
 // Atajos de teclado: flechas para moverse, letras o números para elegir opción, M para marcar
 function teclado(e) {
-  if (!examenActivo() || capaBloqueo || document.querySelector('dialog[open]')) return;
+  if (!examenActivo() || capaBloqueo || enNotebook || document.querySelector('dialog[open]')) return;
   if (e.altKey || e.ctrlKey || e.metaKey || e.target.matches('textarea, input[type="text"], select')) return;
   const p = preguntas[paso];
   const tecla = e.key.toLowerCase();
@@ -594,7 +650,7 @@ async function guardarAhora() {
   if (!pendienteGuardar) return;
   pendienteGuardar = false;
   try {
-    await api.guardar({ ...respuestas });
+    await api.guardar({ ...respuestas }, notebook);
     estadoGuardado.textContent = `Guardado a las ${new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
   } catch (e) {
     pendienteGuardar = true;
@@ -639,7 +695,7 @@ async function entregar(automatico) {
   try {
     clearTimeout(temporizadorGuardado);
     pendienteGuardar = false;
-    await api.entregar({ ...respuestas }, automatico);
+    await api.entregar({ ...respuestas }, automatico, notebook);
   } catch (e) {
     entregando = false;
     if (automatico) setTimeout(() => entregar(true), 5000);

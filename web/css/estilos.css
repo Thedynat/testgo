@@ -384,6 +384,11 @@ body.alumno main { max-width: 800px; }
   border: 1px solid var(--borde);
 }
 .reloj.poco { color: var(--peligro); background: var(--peligro-suave); border-color: var(--peligro-borde); }
+/* El botón del Notebook va debajo del temporizador, con su mismo ancho */
+.reloj-notebook { display: grid; gap: 6px; }
+.reloj-notebook .reloj { text-align: center; }
+.boton-notebook { justify-content: center; }
+.hoja-notebook { min-height: 360px; line-height: 1.6; }
 .progreso { height: 4px; border-radius: 99px; background: var(--superficie-2); overflow: hidden; flex-basis: 100%; }
 .progreso > i { display: block; height: 100%; background: linear-gradient(90deg, var(--indigo), var(--celeste)); transition: width 0.3s; }
 
@@ -1033,7 +1038,8 @@ dialog .notificaciones { position: fixed; }
   .tarjeta-login { padding: 24px 20px; }
   .barra-examen { top: 68px; padding: 12px 14px; gap: 10px; }
   .barra-titulo { flex: 1 1 0; min-width: 0; }
-  .barra-examen .reloj { order: 2; font-size: 1.05rem; }
+  .barra-examen .reloj-notebook { order: 2; }
+  .barra-examen .reloj { font-size: 1.05rem; }
   .pasos { order: 3; }
   #salidas-restantes { order: 4; }
   .pregunta { padding: 20px 18px; }
