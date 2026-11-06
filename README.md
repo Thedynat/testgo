@@ -40,7 +40,7 @@ Cada examen se prepara en cinco pasos, siempre en el mismo orden: **1 Preguntas 
   - Antes de importar, todo pasa por una pantalla de revisión.
 - **Ajustes del examen:** eliges el tipo (*Examen*, *Control suave*, *Repaso* o *Personalizado*) y TestGO pone el control antichuleta por ti y explica en una frase qué pasará. También: asignatura, duración, preguntas al azar por alumno y penalización por fallo en test.
 - **Revisar y abrir:** una lista de comprobación antes de abrir el examen (preguntas incompletas, duración, qué hará el control), la vista del alumno y el código en grande para proyectarlo al abrir.
-- **Control antichuleta:** registra cuándo el alumno sale de la pantalla completa, cambia de pestaña, copia o pega. Por defecto, **el examen se bloquea a la primera salida**; el profesor puede cambiarlo o desbloquearlo desde el panel.
+- **Control antichuleta:** registra cuándo el alumno sale de la pantalla completa o cambia de pestaña. Copiar y pegar está siempre permitido. Por defecto, **el examen se bloquea a la primera salida**; el profesor puede cambiarlo o desbloquearlo desde el panel.
 - **Marca de agua** opcional: el nombre del alumno y la fecha de fondo en todo el examen, para que cualquier foto o captura diga de quién es.
 - **Tu centro:** el nombre y el logo del instituto salen en la entrada de los alumnos, en sus exámenes y en los PDF.
 - **En directo:**

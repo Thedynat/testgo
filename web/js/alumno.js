@@ -708,26 +708,7 @@ const manejadores = {
   blur: () => setTimeout(() => revisarPresencia('Pasó a otra ventana o programa'), 150),
   focus: () => revisarPresencia(''),
   fullscreenchange: () => revisarPresencia('Salió de la pantalla completa'),
-  copy: e => {
-    if (!examenActivo()) return;
-    e.preventDefault();
-    enviarIncidencia('copiar', 'Intentó copiar texto');
-  },
-  cut: e => {
-    if (!examenActivo()) return;
-    e.preventDefault();
-    enviarIncidencia('copiar', 'Intentó cortar texto');
-  },
-  paste: e => {
-    if (!examenActivo()) return;
-    e.preventDefault();
-    enviarIncidencia('pegar', 'Intentó pegar texto');
-  },
-  contextmenu: e => {
-    if (!examenActivo()) return;
-    e.preventDefault();
-    enviarIncidencia('menu', 'Abrió el menú del botón derecho');
-  },
+  // Copiar, pegar y el botón derecho se dejan libres
   beforeprint: () => examenActivo() && enviarIncidencia('imprimir', 'Intentó imprimir la página'),
 };
 
