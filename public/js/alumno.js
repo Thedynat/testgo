@@ -905,7 +905,7 @@ function revisarPresencia(motivo) {
   }
 }
 
-// Copiar, cortar, pegar y arrastrar texto: permitidos salvo que el profesor desactive "Permitir copiar y pegar".
+// Copiar, cortar, pegar y arrastrar texto: permitidos salvo que un administrador active "Bloquear copiar y pegar" para todo el centro.
 // Desactivado, se impide y se avisa al profesor (el botón derecho sigue funcionando, pero sus "Copiar" y "Pegar" tampoco hacen nada).
 let ultimoAvisoCopia = 0;
 const sinCopiarPegar = (tipo, detalle) => e => {

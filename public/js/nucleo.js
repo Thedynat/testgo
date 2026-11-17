@@ -32,7 +32,6 @@ export const AJUSTES = {
   barajar: true,
   mostrarNota: false,
   marcaAgua: false,
-  copiarPegar: true,
   modo: '',
   plano: null,
 };
@@ -42,17 +41,17 @@ export const MODOS = {
   examen: {
     nombre: 'Examen',
     descripcion: 'Para evaluar. Control estricto.',
-    ajustes: { maxSalidas: 1, barajar: true, mostrarNota: false, marcaAgua: true, copiarPegar: false },
+    ajustes: { maxSalidas: 1, barajar: true, mostrarNota: false, marcaAgua: true },
   },
   suave: {
     nombre: 'Control suave',
     descripcion: 'Para controles cortos en clase.',
-    ajustes: { maxSalidas: 3, barajar: true, mostrarNota: true, marcaAgua: false, copiarPegar: true },
+    ajustes: { maxSalidas: 3, barajar: true, mostrarNota: true, marcaAgua: false },
   },
   repaso: {
     nombre: 'Repaso',
     descripcion: 'Para practicar. Sin bloqueos.',
-    ajustes: { maxSalidas: 0, barajar: false, mostrarNota: true, marcaAgua: false, copiarPegar: true },
+    ajustes: { maxSalidas: 0, barajar: false, mostrarNota: true, marcaAgua: false },
   },
   personalizado: {
     nombre: 'Personalizado',
@@ -69,6 +68,7 @@ export const NORMAS = {
   barajar: 'Preguntas y opciones siempre barajadas',
   ocultarNota: 'No enseñar la nota al entregar',
   salidasMaximas: 'Bloquear como mucho tras estas salidas',
+  bloquearCopiarPegar: 'Copiar y pegar bloqueado en todos los exámenes',
 };
 
 // Devuelve el examen cumpliendo las normas del centro
@@ -89,6 +89,7 @@ export function normasActivas(normas = {}) {
   if (normas.barajar) lista.push(NORMAS.barajar);
   if (normas.ocultarNota) lista.push(NORMAS.ocultarNota);
   if (Number(normas.salidasMaximas) > 0) lista.push(`Se bloquea como mucho tras ${normas.salidasMaximas} ${Number(normas.salidasMaximas) === 1 ? 'salida' : 'salidas'}`);
+  if (normas.bloquearCopiarPegar) lista.push(NORMAS.bloquearCopiarPegar);
   return lista;
 }
 
@@ -115,9 +116,6 @@ export function explicarControl(ex) {
     ex.barajar ? 'Cada alumno ve las preguntas y las opciones en un orden distinto.' : 'Todos ven las preguntas en el mismo orden.',
     ex.mostrarNota ? 'El alumno ve su nota al entregar.' : 'El alumno no ve su nota al entregar.',
     ex.marcaAgua ? 'Su nombre y la fecha salen de fondo en todo el examen.' : 'Sin marca de agua.',
-    ex.copiarPegar === false
-      ? 'No pueden copiar ni pegar texto. Si lo intentan, lo verás en directo.'
-      : 'Pueden copiar y pegar texto.',
   ];
 }
 
@@ -306,7 +304,6 @@ export function limpiarExamen(datos = {}, previo = {}) {
     titulo: String(datos.titulo ?? base.titulo).trim().slice(0, 200) || 'Examen sin título',
     asignatura: String(datos.asignatura ?? base.asignatura ?? '').trim().slice(0, 120),
     marcaAgua: si('marcaAgua', Boolean),
-    copiarPegar: si('copiarPegar', Boolean),
     modo: MODOS[datos.modo] ? datos.modo : MODOS[base.modo] ? base.modo : '',
     plano: datos.plano !== undefined ? limpiarPlano(datos.plano) : base.plano ?? null,
     duracion: Math.round(acotar(datos.duracion, base.duracion, 1, 600)),
@@ -335,8 +332,6 @@ export const datosPublicos = ex => ({
   titulo: ex.titulo,
   asignatura: ex.asignatura || '',
   marcaAgua: !!ex.marcaAgua,
-  // Los exámenes de antes de este ajuste no lo tienen: siguen permitiendo copiar y pegar
-  copiarPegar: ex.copiarPegar !== false,
   duracion: ex.duracion,
   numPreguntas: ex.numPreguntas,
   maxSalidas: ex.maxSalidas,

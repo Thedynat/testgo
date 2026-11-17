@@ -342,7 +342,7 @@ const PENALIZACIONES = [['0', 'No restan'], ['0.25', 'Restan 1/4'], ['0.3333', '
 
 function seccionExamenes(contenido, { ajustes }) {
   const d = { modo: '', duracion: 60, penalizacion: 0, ...ajustes.examenes.defectos };
-  const n = { marcaAgua: false, barajar: false, ocultarNota: false, salidasMaximas: 0, ...ajustes.examenes.normas };
+  const n = { marcaAgua: false, barajar: false, ocultarNota: false, salidasMaximas: 0, bloquearCopiarPegar: false, ...ajustes.examenes.normas };
   const penalizacion = String(PENALIZACIONES.find(([v]) => Math.abs(Number(v) - Number(d.penalizacion)) < 0.001)?.[0] ?? '0');
 
   vaciar(contenido,
@@ -358,6 +358,8 @@ function seccionExamenes(contenido, { ajustes }) {
       fila(N.NORMAS.ocultarNota, 'El alumno no ve su nota al entregar; el profesor la comunica después.', interruptor(n.ocultarNota, v => (n.ocultarNota = v), N.NORMAS.ocultarNota)),
       fila('Bloqueo por salir de la pantalla', 'El máximo de salidas que un profesor puede permitir antes de bloquear el examen.',
         selector([[0, 'Lo decide cada profesor'], [1, 'A la primera salida'], [2, 'Como mucho 2 salidas'], [3, 'Como mucho 3 salidas'], [5, 'Como mucho 5 salidas']], n.salidasMaximas, v => (n.salidasMaximas = Number(v)), 'Bloqueo por salir')),
+      fila('Bloquear copiar y pegar', 'Los alumnos no pueden copiar, cortar, pegar ni arrastrar texto, y el profesor ve cada intento en directo. Vale para todos los exámenes en cuanto se guarda: el alumno lo recibe al entrar o al recargar el examen.',
+        interruptor(n.bloquearCopiarPegar, v => (n.bloquearCopiarPegar = v), 'Bloquear copiar y pegar')),
     ),
     pieGuardar(async () => {
       Object.assign(ajustes.examenes, await apiAdmin.guardarExamenes({ defectos: d, normas: n }));

@@ -256,6 +256,8 @@ export const alumno = {
         if (!pub) throw new ErrorTestGO(401, 'Este examen ya no existe.');
         // Siempre el centro actual, aunque el examen se creara antes de cambiarlo
         pub.centro = await leerCentro(db).catch(() => pub.centro || null);
+        // Copiar y pegar lo decide el administrador para todo el centro (Normas obligatorias), no cada examen
+        pub.copiarPegar = !(await leerAjustesExamenes(db)).normas.bloquearCopiarPegar;
         await cargarImagenes(db, idsImagenes(pub.preguntas, pub.centro));
         Object.assign(estadoAlumnoActual, { E, pub, uid, db });
         if (cerrado) return;
@@ -927,6 +929,7 @@ export const admin = {
         barajar: !!normas.barajar,
         ocultarNota: !!normas.ocultarNota,
         salidasMaximas: Math.round(N.acotar(normas.salidasMaximas, 0, 0, 50)),
+        bloquearCopiarPegar: !!normas.bloquearCopiarPegar,
       },
     };
     await setDoc(doc(db, 'ajustes', 'examenes'), limpio);

@@ -151,8 +151,9 @@ service cloud.firestore {
         && (!('mensajeAlumnos' in request.resource.data) || (request.resource.data.mensajeAlumnos is string && request.resource.data.mensajeAlumnos.size() <= 300));
     }
 
+    // Los alumnos también lo leen: las normas dicen si en los exámenes se puede copiar y pegar
     match /ajustes/examenes {
-      allow get: if profesor();
+      allow get: if conectado();
       allow write: if admin()
         && request.resource.data.keys().hasOnly(['defectos', 'normas'])
         && request.resource.data.defectos is map
