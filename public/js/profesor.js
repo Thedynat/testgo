@@ -515,7 +515,8 @@ async function vistaExamen(E, pestana) {
   }
 
   // Estado compartido por los pasos y guardado automático
-  const ctx = { E, ex, borrador: structuredClone(ex), limpiar: [] };
+  // Con los valores por defecto debajo, para los ajustes que no existían cuando se creó el examen
+  const ctx = { E, ex, borrador: structuredClone({ ...N.AJUSTES, ...ex }), limpiar: [] };
   let temporizador = null;
   let guardando = Promise.resolve();
   const estadoGuardado = h('span', { class: 'estado-guardado' }, 'Guardado');
@@ -537,7 +538,7 @@ async function vistaExamen(E, pestana) {
         ctx.ex = await api.guardarExamen(E, {
           titulo: b.titulo, asignatura: b.asignatura, duracion: b.duracion, numPreguntas: b.numPreguntas, maxSalidas: b.maxSalidas,
           penalizacion: b.penalizacion, barajar: b.barajar, mostrarNota: b.mostrarNota, marcaAgua: b.marcaAgua,
-          modo: b.modo, plano: b.plano, preguntas: b.preguntas,
+          copiarPegar: b.copiarPegar, modo: b.modo, plano: b.plano, preguntas: b.preguntas,
         });
         estadoGuardado.textContent = 'Guardado';
         estadoGuardado.dataset.estado = '';
@@ -1039,6 +1040,7 @@ function pestanaAjustes(ctx, contenido) {
             interruptor('barajar', 'Barajar preguntas y opciones', 'Cada alumno las ve en un orden distinto.'),
             interruptor('mostrarNota', 'Enseñar la nota al entregar', 'Si hay preguntas de desarrollo, la nota será provisional hasta que las corrijas.'),
             interruptor('marcaAgua', 'Marca de agua con el nombre y la fecha', 'El nombre del alumno y la fecha salen de fondo: si alguien hace una foto o una captura, se sabe de quién es.'),
+            interruptor('copiarPegar', 'Permitir copiar y pegar', 'Desactivado, los alumnos no pueden copiar, cortar, pegar ni arrastrar texto, y ves en directo cada vez que lo intentan.'),
           ]
           : [
             h('ul', { class: 'lista-explicacion' }, N.explicarControl(b).map(t => h('li', {}, t))),

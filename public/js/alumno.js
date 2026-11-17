@@ -214,6 +214,7 @@ function pantallaInstrucciones() {
       norma('reloj', 'El tiempo empieza al pulsar el botón. Al acabar, el examen se entrega solo.'),
       examen.penalizacion ? norma('aviso', `En las de test, cada fallo resta un ${N.numero(examen.penalizacion * 100)} % de lo que vale la pregunta. En blanco no resta.`) : null,
       examen.marcaAgua ? norma('usuario', 'Tu nombre y la fecha salen de fondo en todo el examen.') : null,
+      examen.copiarPegar === false ? norma('copia', 'No se puede copiar ni pegar. Si lo intentas, el profesor lo verá.') : null,
     ),
     empezar,
   ));
@@ -896,13 +897,30 @@ function revisarPresencia(motivo) {
   }
 }
 
-// Copiar, cortar, pegar y el botón derecho están permitidos: no se bloquean ni se avisa al profesor
+// Copiar, cortar, pegar y arrastrar texto: permitidos salvo que el profesor desactive "Permitir copiar y pegar".
+// Desactivado, se impide y se avisa al profesor (el botón derecho sigue funcionando, pero sus "Copiar" y "Pegar" tampoco hacen nada).
+let ultimoAvisoCopia = 0;
+const sinCopiarPegar = (tipo, detalle) => e => {
+  if (actual?.examen.copiarPegar !== false) return;
+  e.preventDefault();
+  if (!examenActivo()) return;
+  enviarIncidencia(tipo, detalle);
+  if (Date.now() - ultimoAvisoCopia > 3000) {
+    ultimoAvisoCopia = Date.now();
+    notificar('En este examen no se puede copiar ni pegar.', 'error');
+  }
+};
+
 const manejadores = {
   visibilitychange: () => revisarPresencia('Cambió de pestaña o minimizó el navegador'),
   blur: () => setTimeout(() => revisarPresencia('Pasó a otra ventana o programa'), 150),
   focus: () => revisarPresencia(''),
   fullscreenchange: () => revisarPresencia('Salió de la pantalla completa'),
   beforeprint: () => examenActivo() && enviarIncidencia('imprimir', 'Intentó imprimir la página'),
+  copy: sinCopiarPegar('copiar', 'Intentó copiar texto'),
+  cut: sinCopiarPegar('copiar', 'Intentó cortar texto'),
+  paste: sinCopiarPegar('pegar', 'Intentó pegar texto'),
+  drop: sinCopiarPegar('pegar', 'Intentó arrastrar texto al examen'),
 };
 
 function activarVigilancia() {
