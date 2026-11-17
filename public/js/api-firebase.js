@@ -12,7 +12,13 @@
  *   publico/{E}/solicitudes/{uid}         alumno que pide volver a entrar desde otro equipo
  *   codigos/{CÓDIGO}                      { examenId }
  *   imagenes/{id}                         imágenes de las preguntas y el logo (data: URL)
- *   profesores/{uid}                      { centro: { nombre, logo } }
+ *   profesores/{uid}                      { email, estado: activo | pendiente | bloqueado, creado, ultimoAcceso }
+ *   ajustes/acceso                        { dominios, aprobarRegistros }: quién puede ser profesor
+ *   ajustes/admins                        { correos }: administradores además de los principales (ADMINS)
+ *   ajustes/centro                        { nombre, logo, mensajeAlumnos }: el mismo para todos
+ *   ajustes/examenes                      { defectos, normas }: cómo empiezan los exámenes y qué no se puede cambiar
+ *   ajustes/aviso                         { texto, tipo, activo }: aviso para todos los profesores
+ * Los ajustes solo los cambia un administrador (lo comprueba firestore.rules).
  */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js';
 import {
@@ -21,7 +27,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {
   initializeFirestore, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where,
-  onSnapshot, writeBatch, runTransaction, serverTimestamp, getCountFromServer,
+  onSnapshot, writeBatch, runTransaction, serverTimestamp, getCountFromServer, collectionGroup,
 } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import { FIREBASE, DOMINIO_PROFESORES, ADMINS } from './config.js';
 import * as N from './nucleo.js';
@@ -111,6 +117,12 @@ async function cargarImagenes(db, ids) {
 
 const idsImagenes = (preguntas, centro) => [centro?.logo, ...(preguntas || []).map(p => p.imagen)];
 
+// Nombre y logo del centro: uno solo para todos los profesores y alumnos
+async function leerCentro(db) {
+  const s = await getDoc(doc(db, 'ajustes', 'centro'));
+  return { nombre: s.data()?.nombre || '', logo: s.data()?.logo || null, mensajeAlumnos: s.data()?.mensajeAlumnos || '' };
+}
+
 // Un documento de Firestore admite como mucho 1 MB: se reduce la imagen hasta que quepa
 async function encoger(datos) {
   if (datos.length < 900000) return datos;
@@ -177,7 +189,13 @@ const estadoAlumnoActual = { E: null, pub: null, intento: null, desfase: 0 };
 
 export const alumno = {
   sesionGuardada: () => !!leerLocal()?.E,
-  centro: async () => null,
+  // Para la pantalla de entrada, antes de escribir el código
+  centro: intentar(async () => {
+    const { db } = await sesionAlumno();
+    const c = await leerCentro(db);
+    await cargarImagenes(db, [c.logo]);
+    return c;
+  }),
   urlImagen,
 
   entrar: intentar(async (codigo, nombreEscrito) => {
@@ -236,6 +254,8 @@ export const alumno = {
         const E = local.E;
         const pub = (await getDoc(doc(db, 'publico', E))).data();
         if (!pub) throw new ErrorTestGO(401, 'Este examen ya no existe.');
+        // Siempre el centro actual, aunque el examen se creara antes de cambiarlo
+        pub.centro = await leerCentro(db).catch(() => pub.centro || null);
         await cargarImagenes(db, idsImagenes(pub.preguntas, pub.centro));
         Object.assign(estadoAlumnoActual, { E, pub, uid, db });
         if (cerrado) return;
@@ -331,16 +351,88 @@ export const alumno = {
 // ---------- Profesor ----------
 
 const minusculas = correo => String(correo || '').toLowerCase().trim();
-const esAdmin = correo => ADMINS.map(minusculas).includes(minusculas(correo));
-// Puede entrar al panel: cuenta del centro o administrador
-const esDelCentro = correo => minusculas(correo).endsWith(DOMINIO_PROFESORES) || esAdmin(correo);
+
+// Quién puede entrar, según Administración → Acceso y Profesores.
+// Los administradores principales (ADMINS en config.js) son fijos: nadie los puede quitar desde el panel.
+const acceso = { dominios: [DOMINIO_PROFESORES.replace(/^@/, '')], aprobarRegistros: false, adminsExtra: [] };
+const cuenta = { estado: 'activo' };
+
+// ajustes/acceso se puede leer sin haber iniciado sesión: hace falta para comprobar el correo al registrarse
+async function cargarAcceso(db) {
+  try {
+    const d = (await getDoc(doc(db, 'ajustes', 'acceso'))).data();
+    if (Array.isArray(d?.dominios) && d.dominios.length) acceso.dominios = d.dominios.map(minusculas);
+    acceso.aprobarRegistros = !!d?.aprobarRegistros;
+  } catch {}
+}
+
+async function cargarAdmins(db) {
+  try {
+    acceso.adminsExtra = ((await getDoc(doc(db, 'ajustes', 'admins'))).data()?.correos || []).map(minusculas);
+  } catch {
+    acceso.adminsExtra = [];
+  }
+}
+
+const esAdminPrincipal = correo => ADMINS.map(minusculas).includes(minusculas(correo));
+const esAdmin = correo => esAdminPrincipal(correo) || acceso.adminsExtra.includes(minusculas(correo));
+const dominioDe = correo => minusculas(correo).split('@')[1] || '';
+const dominioPermitido = correo => acceso.dominios.includes(dominioDe(correo));
+const textoDominios = () => acceso.dominios.map(d => '@' + d).join(', ');
+// Puede entrar al panel: cuenta de un dominio permitido o administrador
+const esDelCentro = correo => dominioPermitido(correo) || esAdmin(correo);
+
+// La ficha del profesor se crea la primera vez que entra. Su estado lo decide un administrador.
+async function prepararFicha(db, u) {
+  const ref = doc(db, 'profesores', u.uid);
+  const email = minusculas(u.email);
+  const s = await getDoc(ref);
+  if (!s.exists()) {
+    const estado = acceso.aprobarRegistros && !esAdmin(email) ? 'pendiente' : 'activo';
+    await setDoc(ref, { email, estado, creado: serverTimestamp(), ultimoAcceso: serverTimestamp() });
+    return estado;
+  }
+  const d = s.data();
+  // El último acceso se apunta como mucho una vez cada hora, para no escribir en cada recarga
+  if (Date.now() - (ms(d.ultimoAcceso) || 0) > 3600000 || d.email !== email) {
+    updateDoc(ref, { email, ultimoAcceso: serverTimestamp() }).catch(() => {});
+  }
+  return d.estado || 'activo';
+}
+
+// Valores por defecto y normas de los exámenes (se leen una vez por sesión)
+let ajustesExamenes = null;
+async function leerAjustesExamenes(db) {
+  if (!ajustesExamenes) {
+    try {
+      const d = (await getDoc(doc(db, 'ajustes', 'examenes'))).data() || {};
+      ajustesExamenes = { defectos: d.defectos || {}, normas: d.normas || {} };
+    } catch {
+      ajustesExamenes = { defectos: {}, normas: {} };
+    }
+  }
+  return ajustesExamenes;
+}
+
+// Un administrador puede usar el panel como profesor o como administrador.
+// Se recuerda en este navegador; la primera vez entra como profesor.
+const CLAVE_MODO = 'testgo.modoPanel';
+const leerModo = () => {
+  try {
+    return localStorage.getItem(CLAVE_MODO) === 'admin' ? 'admin' : 'profesor';
+  } catch {
+    return 'profesor';
+  }
+};
 
 async function sesionProfesor() {
   const c = conexion('profesor');
   await c.listo;
   const u = c.auth.currentUser;
   if (!u || u.isAnonymous || !u.emailVerified || !esDelCentro(u.email)) throw new ErrorTestGO(401, 'Inicia sesión');
-  return { ...c, uid: u.uid, email: u.email, admin: esAdmin(u.email) };
+  if (cuenta.estado !== 'activo' && !esAdmin(u.email)) throw new ErrorTestGO(403, 'Tu cuenta no está activa.');
+  // admin: está usando el modo administrador ahora mismo
+  return { ...c, uid: u.uid, email: u.email, admin: esAdmin(u.email) && leerModo() === 'admin' };
 }
 
 const examenes = new Map(); // caché de los exámenes completos, para corregir en el navegador
@@ -368,10 +460,6 @@ async function reservarCodigo(db, E, uid) {
   throw new ErrorTestGO(503, 'No se pudo generar un código. Vuelve a intentarlo.');
 }
 
-async function centroDe(db, uid) {
-  const s = await getDoc(doc(db, 'profesores', uid));
-  return { nombre: s.data()?.centro?.nombre || '', logo: s.data()?.centro?.logo || null };
-}
 
 // Lo que se guarda en publico/{E}: lo que ve el alumno
 // Siempre con el dueño del examen, aunque lo edite un administrador
@@ -405,12 +493,19 @@ const nuevaIncidencia = (lote, db, E, A, tipo, detalle) =>
 
 export const profesor = {
   modo: 'firebase',
-  dominio: DOMINIO_PROFESORES,
+  // El primer dominio permitido (para el ejemplo del campo de correo) y todos, para la ayuda
+  get dominio() {
+    return '@' + acceso.dominios[0];
+  },
+  get textoDominios() {
+    return textoDominios();
+  },
   urlImagen,
 
   async sesion() {
-    const { auth } = conexion('profesor');
+    const { auth, db } = conexion('profesor');
     await conexion('profesor').listo;
+    await cargarAcceso(db);
     let u = auth.currentUser;
     if (u && !u.isAnonymous && !u.emailVerified) {
       await reload(u).catch(() => {});
@@ -419,16 +514,31 @@ export const profesor = {
       if (u?.emailVerified) await u.getIdToken(true).catch(() => {});
     }
     if (!u || u.isAnonymous) return { conectado: false };
+    await cargarAdmins(db);
     if (!esDelCentro(u.email)) {
       await signOut(auth);
-      return { conectado: false, error: `Solo pueden entrar cuentas ${DOMINIO_PROFESORES}.` };
+      return { conectado: false, error: `Solo pueden entrar cuentas ${textoDominios()}.` };
     }
     if (!u.emailVerified) return { conectado: false, email: u.email, pendienteVerificar: true };
-    return { conectado: true, email: u.email, admin: esAdmin(u.email) };
+    // Pendiente de aprobar o bloqueado por un administrador: no entra al panel
+    cuenta.estado = esAdmin(u.email) ? 'activo' : await prepararFicha(db, u);
+    if (esAdmin(u.email)) prepararFicha(db, u).catch(() => {});
+    if (cuenta.estado === 'pendiente') return { conectado: false, email: u.email, pendienteAprobacion: true };
+    if (cuenta.estado === 'bloqueado') return { conectado: false, email: u.email, bloqueado: true };
+    // puedeAdmin: es administrador; admin: tiene activado el modo administrador
+    const puedeAdmin = esAdmin(u.email);
+    // proveedor: 'password' (correo y contraseña) o 'google.com'
+    const proveedor = u.providerData.some(p => p.providerId === 'password') ? 'password' : u.providerData[0]?.providerId || null;
+    return { conectado: true, email: u.email, puedeAdmin, admin: puedeAdmin && leerModo() === 'admin', proveedor };
+  },
+
+  cambiarModo(modo) {
+    try {
+      localStorage.setItem(CLAVE_MODO, modo === 'admin' ? 'admin' : 'profesor');
+    } catch {}
   },
 
   login: intentar(async (correo, clave) => {
-    if (!esDelCentro(correo)) throw new ErrorTestGO(400, `Usa tu correo del centro (${DOMINIO_PROFESORES}).`);
     await signInWithEmailAndPassword(conexion('profesor').auth, correo.trim(), clave);
   }),
 
@@ -437,14 +547,16 @@ export const profesor = {
     const proveedor = new GoogleAuthProvider();
     proveedor.setCustomParameters({ prompt: 'select_account' });
     const r = await signInWithPopup(auth, proveedor);
+    await cargarAdmins(conexion('profesor').db);
     if (!esDelCentro(r.user.email)) {
       await signOut(auth);
-      throw new ErrorTestGO(403, `Solo pueden entrar cuentas ${DOMINIO_PROFESORES}. Has entrado con ${r.user.email}.`);
+      throw new ErrorTestGO(403, `Solo pueden entrar cuentas ${textoDominios()}. Has entrado con ${r.user.email}.`);
     }
   }),
 
   registrar: intentar(async (correo, clave) => {
-    if (!esDelCentro(correo)) throw new ErrorTestGO(400, `Solo se pueden crear cuentas con el correo del centro (${DOMINIO_PROFESORES}).`);
+    await cargarAcceso(conexion('profesor').db);
+    if (!dominioPermitido(correo) && !esAdminPrincipal(correo)) throw new ErrorTestGO(400, `Solo se pueden crear cuentas con el correo del centro (${textoDominios()}).`);
     if (String(clave).length < 8) throw new ErrorTestGO(400, 'La contraseña debe tener al menos 8 caracteres.');
     const r = await createUserWithEmailAndPassword(conexion('profesor').auth, correo.trim(), clave);
     await sendEmailVerification(r.user);
@@ -475,13 +587,14 @@ export const profesor = {
 
   crearExamen: intentar(async datos => {
     const { db, uid, email } = await sesionProfesor();
+    const { defectos, normas } = await leerAjustesExamenes(db);
     const id = N.nuevoId();
     const codigo = await reservarCodigo(db, id, uid);
-    const ex = { id, ...N.limpiarExamen(datos), codigo, abierto: false, creado: Date.now(), propietario: uid, propietarioEmail: email };
+    const limpio = N.aplicarNormas(N.limpiarExamen(N.aplicarDefectos(datos, defectos)), normas);
+    const ex = { id, ...limpio, codigo, abierto: false, creado: Date.now(), propietario: uid, propietarioEmail: email };
     const lote = writeBatch(db);
     lote.set(doc(db, 'examenes', id), ex);
-    lote.set(doc(db, 'publico', id), documentoPublico(ex, await centroDe(db, uid)));
-    lote.set(doc(db, 'profesores', uid), { email }, { merge: true });
+    lote.set(doc(db, 'publico', id), documentoPublico(ex, await leerCentro(db)));
     await lote.commit();
     examenes.set(id, ex);
     return { ...ex, alumnos: 0 };
@@ -504,10 +617,11 @@ export const profesor = {
     const { alumnos, entregados } = await contarAlumnos(db, E);
     const cambios = N.limpiarExamen(datos, previo);
     N.comprobarCambios(previo, cambios, alumnos > 0);
-    const ex = { ...previo, ...cambios, ...(datos.abierto !== undefined ? { abierto: !!datos.abierto } : {}) };
+    const { normas } = await leerAjustesExamenes(db);
+    const ex = N.aplicarNormas({ ...previo, ...cambios, ...(datos.abierto !== undefined ? { abierto: !!datos.abierto } : {}) }, normas);
     const lote = writeBatch(db);
     lote.set(doc(db, 'examenes', E), ex);
-    lote.set(doc(db, 'publico', E), documentoPublico(ex, await centroDe(db, ex.propietario)));
+    lote.set(doc(db, 'publico', E), documentoPublico(ex, await leerCentro(db)));
     await lote.commit();
     examenes.set(E, ex);
     return { ...ex, alumnos, entregados };
@@ -649,24 +763,44 @@ export const profesor = {
   // ----- Centro e imágenes -----
 
   centro: intentar(async () => {
-    const { db, uid } = await sesionProfesor();
-    const c = await centroDe(db, uid);
+    const { db } = await sesionProfesor();
+    const c = await leerCentro(db);
     await cargarImagenes(db, [c.logo]);
     return c;
   }),
 
-  guardarCentro: intentar(async ({ nombre, logo }) => {
-    const { db, uid } = await sesionProfesor();
-    const centro = { nombre: String(nombre ?? '').trim().slice(0, 150), logo: logo || null };
-    await setDoc(doc(db, 'profesores', uid), { centro }, { merge: true });
-    // Los exámenes ya creados también lo enseñan
-    const s = await getDocs(query(collection(db, 'examenes'), where('propietario', '==', uid)));
+  // Solo un administrador: el nombre y el logo son los mismos para todos
+  guardarCentro: intentar(async ({ nombre, logo, mensajeAlumnos }) => {
+    const { db, admin } = await sesionProfesor();
+    if (!admin) throw new ErrorTestGO(403, 'Solo un administrador puede cambiar el nombre y el logo del centro.');
+    const previo = await leerCentro(db);
+    const centro = {
+      nombre: String(nombre ?? previo.nombre).trim().slice(0, 150),
+      logo: logo === undefined ? previo.logo : logo || null,
+      mensajeAlumnos: String(mensajeAlumnos ?? previo.mensajeAlumnos).trim().slice(0, 300),
+    };
+    await setDoc(doc(db, 'ajustes', 'centro'), centro);
+    // Los exámenes ya creados, de todos los profesores, también lo enseñan
+    const s = await getDocs(collection(db, 'examenes'));
     for (let i = 0; i < s.docs.length; i += 400) {
       const lote = writeBatch(db);
       s.docs.slice(i, i + 400).forEach(d => lote.update(doc(db, 'publico', d.id), { centro }));
       await lote.commit();
     }
     return centro;
+  }),
+
+  // Valores por defecto y normas del centro (para enseñarlas en los ajustes del examen)
+  ajustesExamenes: intentar(async () => {
+    const { db } = await sesionProfesor();
+    return leerAjustesExamenes(db);
+  }),
+
+  // Aviso del centro para todos los profesores, si hay uno activo
+  aviso: intentar(async () => {
+    const { db } = await sesionProfesor();
+    const d = (await getDoc(doc(db, 'ajustes', 'aviso'))).data();
+    return d?.activo && d.texto ? { texto: d.texto, tipo: d.tipo || 'info', t: ms(d.t) || 0 } : null;
   }),
 
   subirImagen: intentar(async datos => {
@@ -676,6 +810,178 @@ export const profesor = {
     await setDoc(doc(db, 'imagenes', id), { datos: reducida, propietario: uid });
     imagenes.set(id, reducida);
     return id;
+  }),
+};
+
+// ---------- Administración ----------
+// Solo para un administrador con el modo Admin activado. Las reglas de Firestore lo vuelven a comprobar.
+
+async function soloAdmin() {
+  const s = await sesionProfesor();
+  if (!s.admin) throw new ErrorTestGO(403, 'Esto solo lo puede hacer un administrador en modo Admin.');
+  return s;
+}
+
+const limpiarDominio = d => minusculas(d).replace(/^@/, '');
+const dominioValido = d => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d);
+
+export const admin = {
+  principales: ADMINS.map(minusculas),
+
+  leerAjustes: intentar(async () => {
+    const { db } = await soloAdmin();
+    const leer = async nombre => (await getDoc(doc(db, 'ajustes', nombre))).data() || {};
+    const [acc, adm, exs, aviso] = await Promise.all(['acceso', 'admins', 'examenes', 'aviso'].map(leer));
+    const centro = await leerCentro(db);
+    await cargarImagenes(db, [centro.logo]);
+    return {
+      acceso: { dominios: acc.dominios?.length ? acc.dominios : acceso.dominios, aprobarRegistros: !!acc.aprobarRegistros },
+      admins: adm.correos || [],
+      centro,
+      examenes: { defectos: exs.defectos || {}, normas: exs.normas || {} },
+      aviso: { texto: aviso.texto || '', tipo: aviso.tipo || 'info', activo: !!aviso.activo },
+    };
+  }),
+
+  // ----- Profesores -----
+
+  profesores: intentar(async () => {
+    const { db } = await soloAdmin();
+    const [fichas, todos] = await Promise.all([getDocs(collection(db, 'profesores')), getDocs(collection(db, 'examenes'))]);
+    await cargarAdmins(db);
+    const porProfesor = {};
+    todos.forEach(d => {
+      const p = d.data().propietario;
+      porProfesor[p] = (porProfesor[p] || 0) + 1;
+    });
+    const orden = { pendiente: 0, activo: 1, bloqueado: 2 };
+    return fichas.docs.map(d => {
+      const x = d.data();
+      const email = minusculas(x.email);
+      return {
+        uid: d.id, email, estado: x.estado || 'activo', creado: ms(x.creado), ultimoAcceso: ms(x.ultimoAcceso),
+        examenes: porProfesor[d.id] || 0,
+        rol: esAdminPrincipal(email) ? 'principal' : acceso.adminsExtra.includes(email) ? 'admin' : 'profesor',
+      };
+    }).sort((a, b) => orden[a.estado] - orden[b.estado] || a.email.localeCompare(b.email));
+  }),
+
+  cambiarEstado: intentar(async (uid, estado) => {
+    const { db, uid: yo } = await soloAdmin();
+    if (uid === yo) throw new ErrorTestGO(400, 'No puedes cambiar tu propia cuenta.');
+    if (!['activo', 'pendiente', 'bloqueado'].includes(estado)) throw new ErrorTestGO(400, 'Estado no válido.');
+    await updateDoc(doc(db, 'profesores', uid), { estado });
+  }),
+
+  cambiarAdmin: intentar(async (email, hacerAdmin) => {
+    const { db, email: yo } = await soloAdmin();
+    email = minusculas(email);
+    if (esAdminPrincipal(email)) throw new ErrorTestGO(400, 'Los administradores principales no se pueden cambiar desde el panel.');
+    if (!hacerAdmin && email === minusculas(yo)) throw new ErrorTestGO(400, 'No puedes quitarte a ti mismo el rol de administrador.');
+    await cargarAdmins(db);
+    const correos = hacerAdmin ? [...new Set([...acceso.adminsExtra, email])] : acceso.adminsExtra.filter(c => c !== email);
+    await setDoc(doc(db, 'ajustes', 'admins'), { correos });
+    acceso.adminsExtra = correos;
+  }),
+
+  // ----- Acceso -----
+
+  guardarAcceso: intentar(async ({ dominios, aprobarRegistros }) => {
+    const { db } = await soloAdmin();
+    const lista = [...new Set((dominios || []).map(limpiarDominio).filter(dominioValido))].slice(0, 20);
+    if (!lista.length) throw new ErrorTestGO(400, 'Pon al menos un dominio, por ejemplo edu.gva.es.');
+    const datos = { dominios: lista, aprobarRegistros: !!aprobarRegistros };
+    await setDoc(doc(db, 'ajustes', 'acceso'), datos);
+    Object.assign(acceso, datos);
+    return datos;
+  }),
+
+  // ----- Centro y mensajes -----
+
+  guardarCentro: datos => profesor.guardarCentro(datos),
+
+  guardarAviso: intentar(async ({ texto, tipo, activo }) => {
+    const { db } = await soloAdmin();
+    const datos = {
+      texto: String(texto || '').trim().slice(0, 500),
+      tipo: ['info', 'aviso', 'urgente'].includes(tipo) ? tipo : 'info',
+      activo: !!activo && !!String(texto || '').trim(),
+      t: serverTimestamp(),
+    };
+    await setDoc(doc(db, 'ajustes', 'aviso'), datos);
+    return { ...datos, t: Date.now() };
+  }),
+
+  // ----- Exámenes -----
+
+  guardarExamenes: intentar(async ({ defectos = {}, normas = {} }) => {
+    const { db } = await soloAdmin();
+    const limpio = {
+      defectos: {
+        modo: N.MODOS[defectos.modo] && defectos.modo !== 'personalizado' ? defectos.modo : '',
+        duracion: Math.round(N.acotar(defectos.duracion, 60, 1, 600)),
+        penalizacion: N.acotar(defectos.penalizacion, 0, 0, 1),
+      },
+      normas: {
+        marcaAgua: !!normas.marcaAgua,
+        barajar: !!normas.barajar,
+        ocultarNota: !!normas.ocultarNota,
+        salidasMaximas: Math.round(N.acotar(normas.salidasMaximas, 0, 0, 50)),
+      },
+    };
+    await setDoc(doc(db, 'ajustes', 'examenes'), limpio);
+    ajustesExamenes = limpio;
+    return limpio;
+  }),
+
+  // ----- Datos -----
+
+  uso: intentar(async () => {
+    const { db } = await soloAdmin();
+    const contar = async q => (await getCountFromServer(q)).data().count;
+    const [profesores, pendientes, examenesTotal, abiertos, intentos] = await Promise.all([
+      contar(collection(db, 'profesores')),
+      contar(query(collection(db, 'profesores'), where('estado', '==', 'pendiente'))),
+      contar(collection(db, 'examenes')),
+      contar(query(collection(db, 'examenes'), where('abierto', '==', true))),
+      contar(collectionGroup(db, 'intentos')),
+    ]);
+    return { profesores, pendientes, examenes: examenesTotal, abiertos, intentos };
+  }),
+
+  // Exámenes creados hace más de esos meses (cerrados: los abiertos no se tocan)
+  examenesAntiguos: intentar(async meses => {
+    const { db } = await soloAdmin();
+    const limite = Date.now() - Number(meses) * 30.44 * 864e5;
+    const s = await getDocs(query(collection(db, 'examenes'), where('creado', '<', limite)));
+    return s.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(e => !e.abierto)
+      .map(e => ({ id: e.id, titulo: e.titulo, creado: e.creado, propietarioEmail: e.propietarioEmail || '' }))
+      .sort((a, b) => a.creado - b.creado);
+  }),
+
+  borrarExamenes: intentar(async (ids, alAvanzar) => {
+    await soloAdmin();
+    for (let i = 0; i < ids.length; i++) {
+      await profesor.borrarExamen(ids[i]);
+      alAvanzar?.(i + 1, ids.length);
+    }
+  }),
+
+  // Copia de todo en un objeto: ajustes, profesores, exámenes y respuestas de los alumnos
+  copia: intentar(async alAvanzar => {
+    const { db } = await soloAdmin();
+    const ajustes = {};
+    for (const nombre of ['acceso', 'admins', 'centro', 'examenes', 'aviso']) ajustes[nombre] = (await getDoc(doc(db, 'ajustes', nombre))).data() || null;
+    const profesores = (await getDocs(collection(db, 'profesores'))).docs.map(d => ({ uid: d.id, ...d.data(), creado: ms(d.data().creado), ultimoAcceso: ms(d.data().ultimoAcceso) }));
+    const lista = (await getDocs(collection(db, 'examenes'))).docs;
+    const examenesCopia = [];
+    for (let i = 0; i < lista.length; i++) {
+      const intentos = (await getDocs(collection(db, 'publico', lista[i].id, 'intentos'))).docs.map(aIntento);
+      examenesCopia.push({ ...lista[i].data(), intentos });
+      alAvanzar?.(i + 1, lista.length);
+    }
+    return { app: 'TestGO', version: 1, fecha: new Date().toISOString(), ajustes, profesores, examenes: examenesCopia };
   }),
 };
 

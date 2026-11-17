@@ -1,139 +1,169 @@
 {
-  "projectId": "testgo-e26db",
-  "version": "sites/testgo-e26db/versions/58e4de4ea7307bc7",
-  "recoveredAt": "2026-11-09T08:50:43.893Z",
-  "files": [
-    {
-      "path": "/__/firebase/init.js",
-      "bytes": 519,
-      "sha256": "adcaa04201aa766f75827668d6cb28e76a3fcc5b1841e6012c75fb4e63ae7f8a",
-      "deployedHash": "63fd47e77fcc78deaacfcccd3873121b9da77a7c9f186f1e5db9fdcf106f4153"
-    },
-    {
-      "path": "/__/firebase/init.json",
-      "bytes": 342,
-      "sha256": "5ce13e44c8e6c3b94c1de799a36c75b778acaa2976921ba4812addf77d600aa3",
-      "deployedHash": "1196a8c5363f7c62a1c306c70703f4caf580c05f4f9eafded1103a8be010d086"
-    },
-    {
-      "path": "/css/estilos.css",
-      "bytes": 72779,
-      "sha256": "637939dc864cb221f790733c96dfeaba7523f85dcb242fc59ea79fe565f79283",
-      "deployedHash": "9ab4a1513c6ec36111d4a1122ee5348c8a6d4e13849c376ce0079b429811a492"
-    },
-    {
-      "path": "/img/estudiantes.jpg",
-      "bytes": 235508,
-      "sha256": "2163c2920a4693d02b46bc1e7959cc00e8f481a49870bf7a6e8cb9e26a8c8a0a",
-      "deployedHash": "4abf4ba5a68462dbe2b9b55aee803942861c2b84c9e772c331bb7521c4a1d964"
-    },
-    {
-      "path": "/img/logo.svg",
-      "bytes": 1002,
-      "sha256": "1bb1aa647b30f707068ed6f9b1fbd322fac566bb18ff1da3473c62900096de39",
-      "deployedHash": "3604520b1dc35eee94bee9407e4b7c92a972c8d32b94aff49cda6fea1f0ec315"
-    },
-    {
-      "path": "/index.html",
-      "bytes": 790,
-      "sha256": "2fd179401b9d94e6f86c4b83b01a644d1c53ed0ffc078727043623b8b0cba33f",
-      "deployedHash": "f9104fb8db762ff728233a1107a7d3fb408cc4c2db78d9640a9230fca5fc82c5"
-    },
-    {
-      "path": "/js/alumno.js",
-      "bytes": 42225,
-      "sha256": "5a675475ecd7fb179c95ae3721848961e10483992cca1dca7606f0fa0854e917",
-      "deployedHash": "19ea9f98dcc316f0103ad2a649caa9b166883a5f8155807aae6332f2d3dc5570"
-    },
-    {
-      "path": "/js/api-firebase.js",
-      "bytes": 31304,
-      "sha256": "b60e94059aaeb2a79dd0cc82bf4d1d6cd99e43fc5f380873ece9d740ed58ab6f",
-      "deployedHash": "72157e85cb9009f14ed4af02e2e911719071fe72e52cc8dd7e700341ce2f0f17"
-    },
-    {
-      "path": "/js/api-servidor.js",
-      "bytes": 5552,
-      "sha256": "8ef5c9121fee69aec0ecf6f49c8893daac29466fdb21f079f763204c20c429b5",
-      "deployedHash": "9aed25ada6e73eac1523955ae08ff679d63c2f934899f62c020083a3ca6b6a87"
-    },
-    {
-      "path": "/js/api.js",
-      "bytes": 408,
-      "sha256": "bb9cc5db2d90d37c3cad9955ebe9c5f740e79bdf9b75d59a027f3318f3bc6baa",
-      "deployedHash": "a83477515f1c7fb4f3f688f1259e5b0d7f3fe6f16ded9602f515cb3d76199e59"
-    },
-    {
-      "path": "/js/comun.js",
-      "bytes": 9594,
-      "sha256": "6832ccd44694dd9cd8842f8f6c3817318ac36c2ba89ecb91e1e31dc24b914581",
-      "deployedHash": "d893497af2686b28529f77267a2cc63004076d94569793a5db1460ee46bbd0a0"
-    },
-    {
-      "path": "/js/config.js",
-      "bytes": 1051,
-      "sha256": "c5008c17041294368bfb6376b97222daeb16908b8e09400ab42f535b741db46c",
-      "deployedHash": "cb8a78adce215a4fa25329864c6d2a2a0cfba71c3a7e45170005c680ca63ab42"
-    },
-    {
-      "path": "/js/exportar.js",
-      "bytes": 15026,
-      "sha256": "f151c4575ce95f57cbdbae6b383366c1a64a1ccfab38729bd9d4dc65c1d8856e",
-      "deployedHash": "a6ec22d934d08c63bd6a480baec9fa8edd3f55dac118f78d679e530fee5fc66c"
-    },
-    {
-      "path": "/js/importar.js",
-      "bytes": 31161,
-      "sha256": "28d4c6ab62deb5e23174ab49deda1fddd7444af5be6f6962b6bf7b3f4f83aef2",
-      "deployedHash": "c5092086fc09f419eceea30120067151a87315b86d352c30d3c9643675cb7d04"
-    },
-    {
-      "path": "/js/librerias.js",
-      "bytes": 856,
-      "sha256": "f9c265f61c0ef76118ee62a92742a8e7480d73228f5bc477cdd485c2ecd17421",
-      "deployedHash": "c9c561af63ea10f376f7af4f1d5712de087ed7d8b37874a3d87871e86640dae2"
-    },
-    {
-      "path": "/js/nucleo.js",
-      "bytes": 29677,
-      "sha256": "8dcd712f796fb85961d99744d9645856225c32cd3411ca13236c79aa2dcd58ff",
-      "deployedHash": "1b9a9d836ad8dc3c6e47c930c70123d71403b5067d3e2cbb0e36bd0b4abdea08"
-    },
-    {
-      "path": "/js/profesor.js",
-      "bytes": 130069,
-      "sha256": "1519e95f1f87db28d38ec02cf6f08868bd3370125175c2410723fff1ca921258",
-      "deployedHash": "6b33fa4694887b8b281cd8ec61fbb1dbcfe9f521a5fc5a22dcf3cab0a1096929"
-    },
-    {
-      "path": "/profesor.html",
-      "bytes": 784,
-      "sha256": "e84fcb2fa824a6495f654b4f3ce1d09b559ee4755b78478f29367a2e110bbe63",
-      "deployedHash": "5a85d78ce41e0a37c9a10465cc81f3f535076bc4495b2f1750b51c71a42bb0b2"
-    },
-    {
-      "path": "/vendor/jspdf.umd.min.js",
-      "bytes": 420165,
-      "sha256": "e6551fcdc32f09d6853b2c5126d18d01d9447e0da618a41a11ebeee0f6c20d54",
-      "deployedHash": "6dd0f3186197f12a2abad42b4c84cb6d851358fb567ac2037ab9659c7ee234b1"
-    },
-    {
-      "path": "/vendor/jszip.min.js",
-      "bytes": 97630,
-      "sha256": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e",
-      "deployedHash": "f0c639fe8336e52628ef42116b6b7105d1ece2d6d3b434db7db34ed0db1572f5"
-    },
-    {
-      "path": "/vendor/pdf.min.mjs",
-      "bytes": 458904,
-      "sha256": "57456c8e0c81e46be31174b499ef77f2b9f5ee46d04412ba627320a36755d4c2",
-      "deployedHash": "48cca5b8df869dce092bd991c67db949e136ad3787f8e478da23d3dc891cfc88"
-    },
-    {
-      "path": "/vendor/pdf.worker.min.mjs",
-      "bytes": 1264342,
-      "sha256": "9536359f1b8367850d485731ca1d5e45c159a7b7a0912325e539937aa21ceb18",
-      "deployedHash": "2ee637aaca251b08806dd766d619c046e71bdf204a598179f8e227b99471012c"
-    }
-  ]
+    "projectId":  "testgo-58376",
+    "version":  "sites/testgo-58376/versions/9c8d6eeb5214f3ba",
+    "releaseTime":  "2026-11-11T13:57:44.158Z",
+    "recoveredAt":  "2026-11-17T10:34:10.3585019Z",
+    "config":  {
+                   "headers":  [
+                                   {
+                                       "headers":  {
+                                                       "Cache-Control":  "no-cache"
+                                                   },
+                                       "glob":  "**/*.@(html|js|mjs|css)"
+                                   },
+                                   {
+                                       "headers":  {
+                                                       "Cache-Control":  "no-cache"
+                                                   },
+                                       "glob":  "/@(|profesor)"
+                                   }
+                               ],
+                   "cleanUrls":  true
+               },
+    "files":  [
+                  {
+                      "path":  "/__/firebase/init.js",
+                      "bytes":  519,
+                      "sha256":  "dcd220598986bfd6572bcf238deab75e520e0ec6f3e51b76b1d4c7838478dfac",
+                      "deployedHash":  "eb94e9e7d09b56e1a7f9533728dac3ba2ee54ff6ec18e7c53c6fa7e802b5aa69"
+                  },
+                  {
+                      "path":  "/__/firebase/init.json",
+                      "bytes":  342,
+                      "sha256":  "a767663c4f8c0a8d6a65a0960aa412981b389d3c478047b882d51112688731e8",
+                      "deployedHash":  "d217503742a7be710e539e560c4ea5d5ca1bd5c633d63fea81aa27e2e952cd99"
+                  },
+                  {
+                      "path":  "/css/estilos.css",
+                      "bytes":  97330,
+                      "sha256":  "acbcff0e28292390e934a06f91a631c834c96defdc7b4bf0e0353d7caa8a61cc",
+                      "deployedHash":  "4121243df129f6b6f550a48c360f743f3e3f8abd7c690e36e1aab0d9b1bdb714"
+                  },
+                  {
+                      "path":  "/img/estudiantes.jpg",
+                      "bytes":  235508,
+                      "sha256":  "2163c2920a4693d02b46bc1e7959cc00e8f481a49870bf7a6e8cb9e26a8c8a0a",
+                      "deployedHash":  "b02c15e18fbeac9449899c05920d9044cde99f1f883c3595ed254c50e6a75b61"
+                  },
+                  {
+                      "path":  "/img/logo.svg",
+                      "bytes":  1002,
+                      "sha256":  "1bb1aa647b30f707068ed6f9b1fbd322fac566bb18ff1da3473c62900096de39",
+                      "deployedHash":  "dbeb10894e02d9d226010ccdc50e6f1ebfb2953ac6a669f0c77c9185cfc9f3ed"
+                  },
+                  {
+                      "path":  "/index.html",
+                      "bytes":  790,
+                      "sha256":  "2fd179401b9d94e6f86c4b83b01a644d1c53ed0ffc078727043623b8b0cba33f",
+                      "deployedHash":  "cc0a7ffd8407065a929a4ef07df25b972498f7895312cba0677799fdcb4b88fc"
+                  },
+                  {
+                      "path":  "/js/admin.js",
+                      "bytes":  25585,
+                      "sha256":  "330e3dca3b2afb3812565be1871f84380ce52ab3e4eb549578ac6532399bc7ba",
+                      "deployedHash":  "d710551dd51268413b1ec1586283584e85f55d9ec91b62a316b328273b94db12"
+                  },
+                  {
+                      "path":  "/js/alumno.js",
+                      "bytes":  42629,
+                      "sha256":  "285f6142f3421fd1bd362c919b052c22c1216a4fe455b6b63f168c1d2dcbea1a",
+                      "deployedHash":  "c9d0acbcea65fbfbf5fee4faa33baa2956dce7917047e57204e8b0b374a891b5"
+                  },
+                  {
+                      "path":  "/js/api-firebase.js",
+                      "bytes":  45214,
+                      "sha256":  "7df50568e065d7224d0ace4cccb9eb21f65bfa26d3adc6c0dda164e5c0bc9872",
+                      "deployedHash":  "834e9c2294f156aa3935ae4a93e09fe3cdb043143590f63d26c9a7765832f6e6"
+                  },
+                  {
+                      "path":  "/js/api-servidor.js",
+                      "bytes":  5552,
+                      "sha256":  "8ef5c9121fee69aec0ecf6f49c8893daac29466fdb21f079f763204c20c429b5",
+                      "deployedHash":  "80e195545b804e5488fd37ebc018fe5e815c407dfe9d15a81b02767468726bb4"
+                  },
+                  {
+                      "path":  "/js/api.js",
+                      "bytes":  536,
+                      "sha256":  "c51ed9e4b71cb75160c07c98dd3068cb0533a0bbb4b75547227a57c4666aae47",
+                      "deployedHash":  "85a5284d98ae77d935b17daa554d893a274d50ec6cae163fc112e7579c13f657"
+                  },
+                  {
+                      "path":  "/js/comun.js",
+                      "bytes":  9637,
+                      "sha256":  "85848d79a3bfd0007b389b87d058d04db1633709373c839e7ad93dbedf9af30d",
+                      "deployedHash":  "84777c0f75e2cdaf5e10271b2b46f2c7b5d435cb7ebc02a3d507a3ff0abcdbd9"
+                  },
+                  {
+                      "path":  "/js/config.js",
+                      "bytes":  1051,
+                      "sha256":  "fa912d21381ae65f2b03c59793bff019fd61297a6b36537c667075e2522322a9",
+                      "deployedHash":  "060e0a01978018f9c220da686d854149d5808a11ef8588289b9e8f01a43fd9c6"
+                  },
+                  {
+                      "path":  "/js/exportar.js",
+                      "bytes":  15026,
+                      "sha256":  "f151c4575ce95f57cbdbae6b383366c1a64a1ccfab38729bd9d4dc65c1d8856e",
+                      "deployedHash":  "0c824033510c42be1b4bf1c037c7b477fa79055639fec691904baed1a534e58d"
+                  },
+                  {
+                      "path":  "/js/ilustraciones.js",
+                      "bytes":  4544,
+                      "sha256":  "a787641200f9f8f3096bafc0ed23fbf04a7a113c4905b76391921615b39165ff",
+                      "deployedHash":  "4abe1ebf231b25a4ee31245428682266ccb507b1bab6fb828a73c3c07f299396"
+                  },
+                  {
+                      "path":  "/js/importar.js",
+                      "bytes":  31161,
+                      "sha256":  "28d4c6ab62deb5e23174ab49deda1fddd7444af5be6f6962b6bf7b3f4f83aef2",
+                      "deployedHash":  "9d427ca7a9e6879c43e101e856ce19b5b4d60cfc3f45b2acf980005c3a395110"
+                  },
+                  {
+                      "path":  "/js/librerias.js",
+                      "bytes":  856,
+                      "sha256":  "f9c265f61c0ef76118ee62a92742a8e7480d73228f5bc477cdd485c2ecd17421",
+                      "deployedHash":  "8fdb755be39cf6d2ed0f2769a3b74d464e72c24bd08ba31209ebb61453941fba"
+                  },
+                  {
+                      "path":  "/js/nucleo.js",
+                      "bytes":  31608,
+                      "sha256":  "21cb121b3ddce6b44e8de357568add1a3eba13dd52c696c2e6524164fce6d98c",
+                      "deployedHash":  "942f7ee812d5c35b2768ebbc7925ea5708a8cd5809bbb0652fa4cbd9ae2e173b"
+                  },
+                  {
+                      "path":  "/js/profesor.js",
+                      "bytes":  142191,
+                      "sha256":  "8ee07750fc26e2687a3f9d2dd1505469ce988277a55dd05b9d322feeecc7a0db",
+                      "deployedHash":  "17cc2f553604d8a728230a8635367e24efbc5fcff13de3253833a03bc0cca8bb"
+                  },
+                  {
+                      "path":  "/profesor.html",
+                      "bytes":  784,
+                      "sha256":  "e84fcb2fa824a6495f654b4f3ce1d09b559ee4755b78478f29367a2e110bbe63",
+                      "deployedHash":  "2db86ec2645150de1251e5fc2a0d3a82422378de3576f98d7c2cc8097cb28cd0"
+                  },
+                  {
+                      "path":  "/vendor/jspdf.umd.min.js",
+                      "bytes":  420165,
+                      "sha256":  "e6551fcdc32f09d6853b2c5126d18d01d9447e0da618a41a11ebeee0f6c20d54",
+                      "deployedHash":  "b7119c16774b01a472d102230edf9dbe81324fba6a90197a2c438a000208dca6"
+                  },
+                  {
+                      "path":  "/vendor/jszip.min.js",
+                      "bytes":  97630,
+                      "sha256":  "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e",
+                      "deployedHash":  "80a36d554f03632735d9047ff3dacb624b7b27e2b6f2b16f2abd34958b2e2c71"
+                  },
+                  {
+                      "path":  "/vendor/pdf.min.mjs",
+                      "bytes":  458904,
+                      "sha256":  "57456c8e0c81e46be31174b499ef77f2b9f5ee46d04412ba627320a36755d4c2",
+                      "deployedHash":  "e77bf84964d4c60539cb09aed1118640b9d86f724d26239204e1a9975b152772"
+                  },
+                  {
+                      "path":  "/vendor/pdf.worker.min.mjs",
+                      "bytes":  1264342,
+                      "sha256":  "9536359f1b8367850d485731ca1d5e45c159a7b7a0912325e539937aa21ceb18",
+                      "deployedHash":  "2aaaa0c52145b765b367b74187b347a1621070567cd3905c1e189113aec46d18"
+                  }
+              ]
 }

@@ -1,13 +1,17 @@
-import { profesor as api, MODO } from './api.js';
+import { profesor as api, admin as apiAdmin, MODO } from './api.js';
 import * as N from './nucleo.js';
 import { $, $$, h, vaciar, marca, notificar, notificarError, dialogo, confirmar, ocupado, descargar, relojTexto, haceTexto, icono, comprimirImagen } from './comun.js';
 import { leerArchivo, leerTexto, analizar, promptIA, leerRespuestaIA, pareceFormatoIA } from './importar.js';
 import { markdownIntento, pdfIntento, zipTodos } from './exportar.js';
+import { ilustracion } from './ilustraciones.js';
+import { vistaAdministracion, bannerAviso } from './admin.js';
 
 const app = $('#app');
 const nav = $('#nav');
 let sesion = null;
 let limpiezaVista = () => {};
+// Valores por defecto y normas de los exámenes que decide el centro (Administración → Exámenes)
+let ajustesCentro = { defectos: {}, normas: {} };
 
 // ---------- Acceso ----------
 
@@ -19,22 +23,109 @@ async function arrancar() {
     return;
   }
   if (!sesion.conectado) return pantallaAcceso();
+  if (api.ajustesExamenes) ajustesCentro = await api.ajustesExamenes().catch(() => ajustesCentro);
   pintarNav();
   mostrar();
 }
 
+// En Firebase el centro y el resto de ajustes comunes están en Administración: solo para el modo administrador.
+// En el servidor propio, el único profesor tiene su página «Tu centro».
+const puedeCambiarCentro = () => !!api.guardarCentro && (MODO !== 'firebase' || !!sesion?.admin);
+const RUTA_AJUSTES = MODO === 'firebase' ? 'admin' : 'centro';
+
+// Interruptor Profesor / Admin: un administrador que también da clase usa el panel como cualquier profesor
+function interruptorModo() {
+  const opcion = (modo, texto, ayuda) => h('button', {
+    type: 'button',
+    class: 'interruptor-opcion' + ((modo === 'admin') === !!sesion.admin ? ' activo' : ''),
+    'aria-pressed': String((modo === 'admin') === !!sesion.admin),
+    title: ayuda,
+    onclick: () => cambiarModo(modo),
+  }, texto);
+  return h('div', { class: 'interruptor-modo', role: 'group', 'aria-label': 'Usar el panel como' },
+    opcion('profesor', 'Profesor', 'Tus exámenes, como cualquier profesor'),
+    opcion('admin', 'Admin', 'La administración: ajustes comunes a todos los profesores'),
+  );
+}
+
+function cambiarModo(modo) {
+  if ((modo === 'admin') === !!sesion.admin) return;
+  api.cambiarModo(modo);
+  sesion.admin = modo === 'admin';
+  pintarNav();
+  notificar(sesion.admin ? 'Modo administrador' : 'Modo profesor');
+  // Admin → Administración; Profesor → sus exámenes
+  const destino = sesion.admin ? '#/' + RUTA_AJUSTES : '#/';
+  const actual = location.hash.replace(/^#\/?/, '');
+  if (actual === destino.replace(/^#\/?/, '')) mostrar();
+  else location.hash = destino;
+}
+
+// En Firebase, el modo administrador es solo la administración: los exámenes se ven en modo profesor
+const modoAdministracion = () => MODO === 'firebase' && !!sesion?.admin;
+
+async function salir() {
+  await api.salir().catch(() => {});
+  location.hash = '';
+  location.reload();
+}
+
 function pintarNav() {
   vaciar(nav,
-    h('a', { class: 'enlace-nav', href: '#/', 'data-ruta': 'lista' }, 'Exámenes'),
-    api.guardarCentro ? h('a', { class: 'enlace-nav', href: '#/centro', 'data-ruta': 'centro' }, 'Centro') : null,
-    h('button', { class: 'enlace-nav', onclick: guiaBienvenida }, 'Ayuda'),
-    MODO === 'servidor' ? h('button', { class: 'boton fantasma mini', onclick: cambiarPassword }, 'Contraseña') : h('span', { class: 'pequeno suave', style: { alignSelf: 'center', padding: '0 8px' } }, sesion.admin ? h('span', { class: 'chip info', style: { marginRight: '6px' } }, 'Admin') : null, sesion.email),
-    h('button', { class: 'boton fantasma mini', onclick: async () => {
-      await api.salir().catch(() => {});
-      location.hash = '';
-      location.reload();
-    } }, icono('salir'), 'Salir'),
+    modoAdministracion() ? null : h('a', { class: 'enlace-nav', href: '#/', 'data-ruta': 'lista' }, 'Inicio'),
+    puedeCambiarCentro() ? h('a', { class: 'enlace-nav', href: '#/' + RUTA_AJUSTES, 'data-ruta': 'ajustes' }, MODO === 'firebase' ? 'Administración' : 'Centro') : null,
+    sesion.puedeAdmin ? interruptorModo() : null,
+    // En el servidor propio no hay correo: se mantienen los botones de siempre
+    MODO === 'servidor'
+      ? [h('button', { class: 'boton fantasma mini', onclick: cambiarPassword }, 'Contraseña'), h('button', { class: 'boton fantasma mini', onclick: salir }, icono('salir'), 'Salir')]
+      : menuUsuario(),
   );
+}
+
+// ---------- Menú de la cuenta: círculo con la inicial → Ver perfil / Salir ----------
+
+const inicial = correo => (String(correo || '?').trim()[0] || '?').toUpperCase();
+
+function menuUsuario() {
+  const menu = h('details', { class: 'menu menu-usuario' },
+    h('summary', { class: 'avatar', title: sesion.email, 'aria-label': 'Tu cuenta' }, inicial(sesion.email)),
+    h('div', { class: 'menu-lista' },
+      h('div', { class: 'menu-cabecera' }, h('b', {}, sesion.email), h('span', {}, sesion.puedeAdmin ? 'Administrador' : 'Profesor')),
+      h('button', { type: 'button', onclick: () => ((menu.open = false), verPerfil()) }, h('b', {}, icono('usuario'), 'Ver perfil')),
+      h('button', { type: 'button', class: 'peligro', onclick: salir }, h('b', {}, icono('salir'), 'Salir')),
+    ),
+  );
+  return menu;
+}
+
+// Se cierra al pulsar fuera o con Escape (un solo escuchador para todos los menús de cuenta)
+document.addEventListener('click', e => $$('.menu-usuario[open], .menu-auto[open]').forEach(m => !m.contains(e.target) && (m.open = false)));
+document.addEventListener('keydown', e => e.key === 'Escape' && $$('.menu-usuario[open], .menu-auto[open]').forEach(m => (m.open = false)));
+
+function verPerfil() {
+  const fila = (etiqueta, valor) => h('div', { class: 'perfil-fila' }, h('span', {}, etiqueta), h('b', {}, valor));
+  const conClave = sesion.proveedor === 'password';
+  dialogo({
+    titulo: 'Tu perfil',
+    contenido: h('div', { class: 'perfil' },
+      h('div', { class: 'perfil-cabecera' }, h('span', { class: 'avatar grande' }, inicial(sesion.email)), h('b', {}, sesion.email)),
+      fila('Tipo de cuenta', sesion.puedeAdmin ? 'Administrador' : 'Profesor'),
+      sesion.puedeAdmin ? fila('Usando el panel como', sesion.admin ? 'Administrador' : 'Profesor') : null,
+      fila('Entras con', conClave ? 'Correo y contraseña' : sesion.proveedor === 'google.com' ? 'Cuenta de Google' : '—'),
+    ),
+    botones: [
+      conClave ? { texto: 'Cambiar contraseña', clase: 'fantasma', valor: 'clave' } : null,
+      { texto: 'Cerrar', clase: 'primario', valor: null },
+    ].filter(Boolean),
+  }).then(async r => {
+    if (r !== 'clave') return;
+    try {
+      await api.recuperar(sesion.email);
+      notificar(`Te hemos enviado un correo a ${sesion.email} para cambiar la contraseña`);
+    } catch (e) {
+      notificarError(e);
+    }
+  });
 }
 
 function tarjetaAcceso(...contenido) {
@@ -90,7 +181,26 @@ function pantallaAcceso() {
   clave.focus();
 }
 
+// Cuenta que todavía no puede usar el panel: pendiente de aprobar o bloqueada por un administrador
+function cuentaEnEspera() {
+  const pendiente = sesion.pendienteAprobacion;
+  return tarjetaAcceso(
+    h('h2', {}, pendiente ? 'Tu cuenta está pendiente' : 'Tu cuenta está bloqueada'),
+    h('p', {}, pendiente
+      ? `Has entrado como ${sesion.email}. Un administrador del centro tiene que aprobar tu cuenta antes de que puedas usar TestGO.`
+      : `La cuenta ${sesion.email} no puede usar TestGO ahora mismo. Si crees que es un error, habla con un administrador del centro.`),
+    h('div', { class: 'pila' },
+      pendiente ? h('button', { class: 'boton primario grande', onclick: () => location.reload() }, 'Volver a comprobar') : null,
+      h('button', { class: 'boton fantasma', onclick: async () => {
+        await api.salir();
+        location.reload();
+      } }, 'Usar otra cuenta'),
+    ),
+  );
+}
+
 function accesoFirebase(modo = 'entrar') {
+  if (sesion.pendienteAprobacion || sesion.bloqueado) return cuentaEnEspera();
   if (sesion.email && sesion.pendienteVerificar) {
     return tarjetaAcceso(
       h('h2', {}, 'Confirma tu correo'),
@@ -110,7 +220,7 @@ function accesoFirebase(modo = 'entrar') {
   }
   const correo = h('input', { type: 'email', autocomplete: 'email', required: true, placeholder: `nombre${api.dominio || ''}` });
   const clave = h('input', { type: 'password', autocomplete: modo === 'crear' ? 'new-password' : 'current-password', required: true, minlength: modo === 'crear' ? 8 : 1 });
-  const ayudaDominio = api.dominio ? `Solo cuentas ${api.dominio}` : null;
+  const ayudaDominio = api.dominio ? `Solo cuentas ${api.textoDominios || api.dominio}` : null;
   const enlaces = h('div', { class: 'fila entre pequeno' },
     modo === 'entrar'
       ? [h('a', { href: '#', onclick: e => (e.preventDefault(), accesoFirebase('crear')) }, 'Crear cuenta de profesor'), h('a', { href: '#', onclick: e => (e.preventDefault(), recuperar(correo.value)) }, 'He olvidado la contraseña')]
@@ -202,15 +312,30 @@ async function cambiarPassword() {
 // #/examen/<id>/<pestaña>     preguntas · ajustes · directo · resultados
 
 const PESTANAS = { preguntas: 'Preguntas', ajustes: 'Ajustes', revisar: 'Revisar y abrir', directo: 'En directo', resultados: 'Corregir' };
+const DESCRIPCION_PASO = {
+  preguntas: 'Escribe o importa las preguntas y ordénalas arrastrando.',
+  ajustes: 'El tipo de examen, el control antichuleta, la duración y cómo se corrige.',
+  revisar: 'Comprueba que no falte nada y ábrelo a los alumnos.',
+  directo: 'Sigue a cada alumno mientras hace el examen.',
+  resultados: 'Notas, corrección de las preguntas de desarrollo y descargas.',
+};
 
 function mostrar() {
   limpiezaVista();
   limpiezaVista = () => {};
   $$('.dialogo-cajon').forEach(d => d.remove());
-  const [seccion, E, pestana] = location.hash.replace(/^#\/?/, '').split('/');
-  $$('#nav [data-ruta]').forEach(a => a.classList.toggle('activo', a.dataset.ruta === (seccion === 'examen' ? 'examen' : seccion === 'centro' ? 'centro' : 'lista')));
+  let [seccion, E, pestana] = location.hash.replace(/^#\/?/, '').split('/');
+  // En modo administrador no hay exámenes: cualquier otra dirección lleva a Administración
+  if (modoAdministracion() && seccion !== RUTA_AJUSTES) {
+    history.replaceState(null, '', '#/' + RUTA_AJUSTES);
+    seccion = RUTA_AJUSTES;
+  }
+  $$('#nav [data-ruta]').forEach(a => a.classList.toggle('activo', a.dataset.ruta === (seccion === 'examen' ? 'examen' : seccion === RUTA_AJUSTES ? 'ajustes' : 'lista')));
   if (seccion === 'examen' && E) return vistaExamen(E, PESTANAS[pestana] ? pestana : 'preguntas');
-  if (seccion === 'centro' && api.guardarCentro) return vistaCentro();
+  if (seccion === RUTA_AJUSTES && puedeCambiarCentro()) {
+    // En Firebase, Administración completa; en el servidor propio, solo «Tu centro»
+    return apiAdmin ? vistaAdministracion(app, { sub: E, sesion }) : vistaCentro();
+  }
   vistaLista();
 }
 
@@ -247,12 +372,13 @@ async function copiar(texto, aviso = 'Copiado') {
 
 // ---------- Lista de exámenes ----------
 
-const botonNuevo = () => h('button', { class: 'boton primario', onclick: e => ocupado(e.currentTarget, async () => {
+// Las dos formas de empezar un examen
+const crearDesdeCero = boton => ocupado(boton, async () => {
   const ex = await api.crearExamen({ titulo: 'Nuevo examen' });
   irA(rutaExamen(ex.id));
-}) }, icono('mas'), 'Nuevo examen');
+});
 
-const botonImportarNuevo = () => h('button', { class: 'boton', onclick: async () => {
+async function importarExamen() {
   const r = await dialogoImportar();
   if (!r) return;
   const ex = await ocupado(null, () => api.crearExamen({ titulo: r.titulo || 'Examen importado', preguntas: r.preguntas }));
@@ -260,7 +386,15 @@ const botonImportarNuevo = () => h('button', { class: 'boton', onclick: async ()
     notificar(`Examen creado con ${r.preguntas.length} preguntas`);
     irA(rutaExamen(ex.id));
   }
-} }, icono('subir'), 'Importar Word o PDF');
+}
+
+const botonNuevo = () => h('button', { class: 'boton acento', onclick: e => crearDesdeCero(e.currentTarget) }, icono('mas'), 'Nuevo examen');
+const botonImportarNuevo = () => h('button', { class: 'boton', onclick: importarExamen }, icono('subir'), 'Importar Word o PDF');
+
+const saludo = () => {
+  const hora = new Date().getHours();
+  return hora >= 6 && hora < 14 ? 'Buenos días' : hora >= 14 && hora < 21 ? 'Buenas tardes' : 'Buenas noches';
+};
 
 let filtroLista = { texto: '', estado: 'todos', quien: 'todos' };
 
@@ -300,106 +434,167 @@ function guiaBienvenida() {
   pintar();
 }
 
+// ---------- Inicio ----------
+// Estilo documento: título grande, secciones con una etiqueta gris y los exámenes en una tabla limpia
+
+const etiquetaSeccion = (texto, ...extra) => h('div', { class: 'seccion-etiqueta' }, h('span', {}, texto), ...extra);
+
+const tarjetaEmpezar = ({ dibujo, titulo, texto, accion }) => h('button', {
+  type: 'button', class: 'tarjeta-empezar', onclick: e => accion(e.currentTarget),
+},
+  h('span', { class: 'tarjeta-empezar-portada' }, ilustracion(dibujo)),
+  h('span', { class: 'tarjeta-empezar-texto' }, h('b', {}, titulo), h('span', {}, texto)),
+);
+
+// Botón «Nuevo» con sus dos opciones
+function botonNuevoMenu() {
+  const menu = h('details', { class: 'menu menu-auto menu-nuevo' },
+    h('summary', { class: 'boton acento mini' }, icono('mas'), 'Nuevo'),
+    h('div', { class: 'menu-lista' },
+      h('button', { type: 'button', onclick: () => ((menu.open = false), crearDesdeCero(null)) }, h('b', {}, icono('lapiz'), 'Empezar desde cero'), h('span', {}, 'Escribe tú las preguntas')),
+      h('button', { type: 'button', onclick: () => ((menu.open = false), importarExamen()) }, h('b', {}, icono('subir'), 'Importar Word o PDF'), h('span', {}, 'TestGO separa las preguntas por ti')),
+    ),
+  );
+  return menu;
+}
+
 async function vistaLista() {
-  document.title = 'TestGO · Exámenes';
+  document.title = 'TestGO · Inicio';
   if (preferencia('testgo.guiaVista', 'no') !== 'si') setTimeout(guiaBienvenida, 300);
-  const resumen = h('p', { class: 'suave', style: { margin: '4px 0 0' } }, ' ');
-  const lista = h('div', { class: 'examenes' }, [1, 2, 3].map(() => h('div', { class: 'tarjeta esqueleto' })));
-  const buscador = h('label', { class: 'buscador' }, icono('lupa'),
-    h('input', { type: 'search', placeholder: 'Buscar examen o código', value: filtroLista.texto, 'aria-label': 'Buscar examen', oninput: e => ((filtroLista.texto = e.target.value), pintar()) }));
-  const segmentado = h('div', { class: 'segmentado', role: 'tablist', 'aria-label': 'Filtrar por estado' });
+  const resumen = h('p', { class: 'inicio-resumen' }, ' ');
+  const zonaAbiertos = h('section', { class: 'inicio-seccion', hidden: true });
+  const pestanas = h('div', { class: 'pestanas-tabla', role: 'tablist', 'aria-label': 'Filtrar por estado' });
+  const buscador = h('label', { class: 'buscador-tabla' }, icono('lupa'),
+    h('input', { type: 'search', placeholder: 'Buscar', value: filtroLista.texto, 'aria-label': 'Buscar examen o código', oninput: e => ((filtroLista.texto = e.target.value), pintar()) }));
   // Solo el administrador ve los exámenes de otros profesores
   const deQuien = h('select', { 'aria-label': 'De quién', hidden: true, onchange: e => ((filtroLista.quien = e.target.value), pintar()) },
     h('option', { value: 'todos' }, 'Todos los profesores'), h('option', { value: 'mios' }, 'Solo los míos'));
   deQuien.value = filtroLista.quien;
+  let galeria;
+  const barra = h('div', { class: 'barra-tabla' }, pestanas, h('span', { class: 'espacio' }), buscador, deQuien, botonNuevoMenu());
+  const tabla = h('div', { class: 'tabla-examenes', role: 'table', 'aria-label': 'Tus exámenes' },
+    [1, 2, 3].map(() => h('div', { class: 'fila-examen esqueleto' })));
 
-  vaciar(app,
-    h('div', { class: 'titulo-seccion', style: { marginTop: 0 } },
-      h('div', {}, h('h1', { style: { margin: 0 } }, sesion?.admin ? 'Exámenes' : 'Tus exámenes'), resumen),
-      h('div', { class: 'fila' }, botonImportarNuevo(), botonNuevo()),
+  // Aviso del centro: se puede ocultar, y vuelve a salir si el administrador publica otro
+  const zonaAviso = h('div');
+  api.aviso?.().then(aviso => {
+    if (!aviso || preferencia('testgo.avisoOculto', '') === String(aviso.t)) return;
+    vaciar(zonaAviso, bannerAviso(aviso, () => {
+      guardarPreferencia('testgo.avisoOculto', String(aviso.t));
+      vaciar(zonaAviso);
+    }));
+  }).catch(() => {});
+
+  vaciar(app, h('div', { class: 'inicio' },
+    zonaAviso,
+    h('header', { class: 'inicio-cabecera' }, h('p', { class: 'inicio-saludo' }, saludo()), h('h1', {}, 'Inicio'), resumen),
+    h('section', { class: 'inicio-seccion' },
+      etiquetaSeccion('Empezar un examen'),
+      galeria = h('div', { class: 'galeria-empezar' },
+        tarjetaEmpezar({ dibujo: 'importar', titulo: 'Importar un examen', texto: 'Sube el Word o PDF que ya tienes y TestGO separa las preguntas, opciones y soluciones.', accion: importarExamen }),
+        tarjetaEmpezar({ dibujo: 'desdeCero', titulo: 'Empezar desde cero', texto: 'Escribe las preguntas: test, verdadero o falso, numéricas, de desarrollo…', accion: crearDesdeCero }),
+      ),
     ),
-    h('div', { class: 'barra-herramientas' }, buscador, deQuien, segmentado),
-    lista,
-  );
+    zonaAbiertos,
+    h('section', { class: 'inicio-seccion' }, etiquetaSeccion('Tus exámenes'), barra, tabla),
+  ));
 
   let examenes;
   try {
     examenes = await api.listarExamenes();
   } catch (e) {
-    return vaciar(lista, h('div', { class: 'aviso peligro' }, e.message));
+    return vaciar(tabla, h('div', { class: 'aviso peligro' }, e.message));
   }
   const todos = examenes;
   const hayDeOtros = todos.some(e => e.mio === false);
   deQuien.hidden = !hayDeOtros;
-  let abiertos = 0;
 
   function pintar() {
     examenes = hayDeOtros && filtroLista.quien === 'mios' ? todos.filter(e => e.mio) : todos;
-    abiertos = examenes.filter(e => e.abierto).length;
-    const profesores = new Set(examenes.map(e => e.propietarioEmail)).size;
+    const abiertos = examenes.filter(e => e.abierto);
     resumen.textContent = examenes.length
-      ? `${plural(examenes.length, 'examen', 'exámenes')} · ${plural(abiertos, 'abierto', 'abiertos')} ahora${hayDeOtros && filtroLista.quien === 'todos' ? ` · ${plural(profesores, 'profesor', 'profesores')}` : ''}`
-      : 'Todavía no tienes ninguno';
-    const opciones = [['todos', 'Todos', examenes.length], ['abiertos', 'Abiertos', abiertos], ['cerrados', 'Cerrados', examenes.length - abiertos]];
-    vaciar(segmentado, opciones.map(([v, t, n]) => h('button', {
+      ? `${plural(examenes.length, 'examen', 'exámenes')} · ${plural(abiertos.length, 'abierto', 'abiertos')} ahora`
+      : 'Aquí tendrás tus exámenes y los que estén abiertos en clase.';
+
+    // Lo más urgente: los exámenes abiertos, con acceso directo a seguirlos
+    zonaAbiertos.hidden = !abiertos.length;
+    vaciar(zonaAbiertos, abiertos.length ? [
+      etiquetaSeccion('Abiertos ahora', h('span', { class: 'punto-vivo', 'aria-hidden': 'true' })),
+      h('div', { class: 'lista-abiertos' }, abiertos.map(e => h('a', { class: 'abierto-item', href: rutaExamen(e.id, 'directo') },
+        h('span', { class: 'abierto-nombre' }, h('b', {}, e.titulo), h('span', {}, `Código ${e.codigo} · ${e.entregados} de ${plural(e.alumnos, 'alumno', 'alumnos')} han entregado`)),
+        h('span', { class: 'enlace-accion' }, 'Seguir en directo', icono('flecha')),
+      ))),
+    ] : null);
+
+    barra.hidden = !examenes.length;
+    galeria.classList.toggle('compacta', examenes.length > 0);
+    const opciones = [['todos', 'Todos', examenes.length], ['abiertos', 'Abiertos', abiertos.length], ['cerrados', 'Cerrados', examenes.length - abiertos.length]];
+    vaciar(pestanas, opciones.map(([v, t, n]) => h('button', {
       type: 'button', role: 'tab', 'aria-selected': String(filtroLista.estado === v), class: filtroLista.estado === v ? 'activo' : '',
       onclick: () => ((filtroLista.estado = v), pintar()),
     }, t, h('span', { class: 'cuenta' }, n))));
 
     if (!examenes.length) {
-      return vaciar(lista,
-        h('div', { class: 'tarjeta vacio', style: { gridColumn: '1 / -1' } },
-          h('img', { src: '/img/logo.svg', alt: '' }),
-          h('h2', {}, 'Crea tu primer examen'),
-          h('p', {}, 'Empieza desde cero o sube un examen que ya tengas en Word o PDF: TestGO separa las preguntas por ti.'),
-          h('div', { class: 'fila', style: { justifyContent: 'center' } }, botonImportarNuevo(), botonNuevo()),
-        ),
-      );
+      return vaciar(tabla, h('div', { class: 'tabla-vacia' },
+        ilustracion('mesa'),
+        h('b', {}, 'Todavía no tienes exámenes'),
+        h('p', {}, 'Empieza importando uno que ya tengas o créalo desde cero con las opciones de arriba.'),
+      ));
     }
     const q = N.normalizar(filtroLista.texto);
     const visibles = examenes.filter(e =>
       (filtroLista.estado === 'todos' || (filtroLista.estado === 'abiertos') === e.abierto) &&
       (!q || N.normalizar(e.titulo).includes(q) || e.codigo.toLowerCase().includes(q) || N.normalizar(e.propietarioEmail).includes(q)),
     );
-    vaciar(lista, visibles.length
-      ? visibles.map(tarjetaExamen)
-      : h('div', { class: 'vacio', style: { gridColumn: '1 / -1' } }, h('p', {}, 'Ningún examen coincide con la búsqueda.'), h('button', { class: 'boton', onclick: () => {
-        filtroLista = { texto: '', estado: 'todos', quien: 'todos' };
-        vistaLista();
-      } }, 'Quitar filtros')));
+    if (!visibles.length) {
+      return vaciar(tabla, h('div', { class: 'tabla-vacia' },
+        ilustracion('buscar', 'pequena'),
+        h('b', {}, 'Ningún examen coincide'),
+        h('button', { class: 'boton mini', onclick: () => {
+          filtroLista = { texto: '', estado: 'todos', quien: 'todos' };
+          vistaLista();
+        } }, 'Quitar filtros'),
+      ));
+    }
+    vaciar(tabla,
+      h('div', { class: 'fila-examen cabecera', role: 'row' },
+        ['Nombre', 'Estado', 'Código', 'Preguntas', 'Entregados', 'Creado', ''].map(t => h('span', { role: 'columnheader' }, t))),
+      visibles.map(filaExamen),
+    );
   }
   pintar();
 }
 
-function tarjetaExamen(ex) {
+// Una fila de la tabla: se abre al pulsarla; las acciones aparecen al pasar por encima
+function filaExamen(ex) {
   const parar = fn => e => {
     e.stopPropagation();
     e.preventDefault();
     fn(e);
   };
-  return h('article', {
-    class: 'tarjeta examen-tarjeta', tabindex: '0', role: 'link', 'aria-label': `Abrir ${ex.titulo}`,
+  const menu = h('details', { class: 'menu menu-auto menu-fila', onclick: e => e.stopPropagation() },
+    h('summary', { class: 'boton fantasma mini solo-icono', title: 'Más acciones', 'aria-label': `Más acciones de ${ex.titulo}` }, icono('puntos')),
+    h('div', { class: 'menu-lista' },
+      h('button', { type: 'button', onclick: parar(() => ((menu.open = false), duplicarExamen(ex.id, null))) }, h('b', {}, icono('copia'), 'Duplicar')),
+      h('button', { type: 'button', class: 'peligro', onclick: parar(() => ((menu.open = false), borrarExamen(ex, null, vistaLista))) }, h('b', {}, icono('papelera'), 'Borrar')),
+    ),
+  );
+  return h('div', {
+    class: 'fila-examen', role: 'row', tabindex: '0', 'aria-label': `Abrir ${ex.titulo}`,
     onclick: () => irA(rutaExamen(ex.id)),
     onkeydown: e => e.key === 'Enter' && e.target === e.currentTarget && irA(rutaExamen(ex.id)),
   },
-    h('div', { class: 'fila entre' },
-      ex.abierto ? h('span', { class: 'chip exito' }, 'Abierto') : h('span', { class: 'chip' }, 'Cerrado'),
-      h('span', { class: 'codigo', title: 'Código para los alumnos' }, ex.codigo),
-    ),
-    h('h3', {}, ex.titulo),
-    ex.mio === false ? h('p', { class: 'pequeno suave', style: { margin: '-4px 0 0' }, title: 'Profesor' }, ex.propietarioEmail || 'Otro profesor') : null,
-    h('div', { class: 'datos-examen' },
-      h('span', {}, h('b', {}, ex.preguntas), ex.preguntas === 1 ? ' pregunta' : ' preguntas'),
-      h('span', {}, h('b', {}, ex.alumnos), ex.alumnos === 1 ? ' alumno' : ' alumnos'),
-      h('span', {}, h('b', {}, ex.entregados), ' entregados'),
-    ),
-    h('div', { class: 'pie-tarjeta' },
-      h('span', { class: 'pequeno suave' }, `Creado el ${fechaCorta(ex.creado)}`),
-      h('span', { class: 'espacio' }),
-      h('a', { class: 'boton mini', href: rutaExamen(ex.id, 'directo'), onclick: e => e.stopPropagation() }, icono('directo'), 'En directo'),
-      h('button', { class: 'boton fantasma mini', title: 'Duplicar', 'aria-label': `Duplicar ${ex.titulo}`, onclick: parar(e => duplicarExamen(ex.id, e.currentTarget)) }, icono('copia')),
-      h('button', { class: 'boton fantasma mini', title: 'Borrar', 'aria-label': `Borrar ${ex.titulo}`, onclick: parar(e => borrarExamen(ex, e.currentTarget, vistaLista)) }, icono('papelera')),
-    ),
+    h('span', { class: 'celda-nombre', role: 'cell' },
+      h('span', { class: 'icono-fila' }, icono('archivo')),
+      h('span', { class: 'celda-titulo' }, h('b', {}, ex.titulo), ex.mio === false ? h('small', {}, ex.propietarioEmail || 'Otro profesor') : null)),
+    h('span', { role: 'cell' }, h('span', { class: 'etiqueta ' + (ex.abierto ? 'verde' : 'gris') }, ex.abierto ? 'Abierto' : 'Cerrado')),
+    h('span', { role: 'cell', class: 'celda-codigo' }, ex.codigo),
+    h('span', { role: 'cell', class: 'celda-dato' }, ex.preguntas),
+    h('span', { role: 'cell', class: 'celda-dato' }, ex.alumnos ? `${ex.entregados} / ${ex.alumnos}` : '—'),
+    h('span', { role: 'cell', class: 'celda-dato' }, fechaCorta(ex.creado)),
+    h('span', { role: 'cell', class: 'celda-acciones' },
+      h('a', { class: 'boton fantasma mini solo-icono', href: rutaExamen(ex.id, 'directo'), title: 'En directo', 'aria-label': `En directo: ${ex.titulo}`, onclick: e => e.stopPropagation() }, icono('directo')),
+      menu),
   );
 }
 
@@ -435,7 +630,7 @@ async function opcionesExportar() {
 }
 
 async function vistaCentro() {
-  document.title = 'TestGO · Centro';
+  document.title = MODO === 'firebase' ? 'TestGO · Administración' : 'TestGO · Centro';
   vaciar(app, h('div', { class: 'tarjeta esqueleto', style: { height: '200px' } }));
   let centro;
   try {
@@ -468,9 +663,9 @@ async function vistaCentro() {
   pintar();
 
   vaciar(app,
-    h('div', { class: 'titulo-seccion', style: { marginTop: 0 } }, h('div', {}, h('h1', { style: { margin: 0 } }, 'Tu centro'), h('p', { class: 'suave', style: { margin: '4px 0 0' } }, 'El nombre y el logo salen en la entrada de los alumnos, en sus exámenes y en los PDF.'))),
+    h('div', { class: 'titulo-seccion', style: { marginTop: 0 } }, h('div', {}, h('h1', { style: { margin: 0 } }, MODO === 'firebase' ? 'Administración' : 'Tu centro'), h('p', { class: 'suave', style: { margin: '4px 0 0' } }, MODO === 'firebase' ? 'Ajustes comunes a todos los profesores. Solo los ven y los cambian los administradores.' : 'El nombre y el logo salen en la entrada de los alumnos, en sus exámenes y en los PDF.'))),
     h('section', { class: 'tarjeta ajustes-seccion' },
-      h('div', {}, h('h3', {}, 'Nombre y logo'), h('p', { class: 'suave pequeno', style: { margin: 0 } }, 'Mejor un logo en PNG con fondo transparente o blanco.')),
+      h('div', {}, h('h3', {}, MODO === 'firebase' ? 'Centro' : 'Nombre y logo'), h('p', { class: 'suave pequeno', style: { margin: 0 } }, MODO === 'firebase' ? 'El nombre y el logo del instituto, los mismos para todos. Salen en la entrada de los alumnos, en sus exámenes y en los PDF. Mejor un logo en PNG con fondo transparente o blanco.' : 'Mejor un logo en PNG con fondo transparente o blanco.')),
       h('div', { class: 'pila' },
         campo('Nombre del centro', nombre),
         h('div', { class: 'campo' }, h('span', {}, 'Logo'), zonaLogo),
@@ -515,8 +710,7 @@ async function vistaExamen(E, pestana) {
   }
 
   // Estado compartido por los pasos y guardado automático
-  // Con los valores por defecto debajo, para los ajustes que no existían cuando se creó el examen
-  const ctx = { E, ex, borrador: structuredClone({ ...N.AJUSTES, ...ex }), limpiar: [] };
+  const ctx = { E, ex, borrador: structuredClone(ex), limpiar: [] };
   let temporizador = null;
   let guardando = Promise.resolve();
   const estadoGuardado = h('span', { class: 'estado-guardado' }, 'Guardado');
@@ -538,7 +732,7 @@ async function vistaExamen(E, pestana) {
         ctx.ex = await api.guardarExamen(E, {
           titulo: b.titulo, asignatura: b.asignatura, duracion: b.duracion, numPreguntas: b.numPreguntas, maxSalidas: b.maxSalidas,
           penalizacion: b.penalizacion, barajar: b.barajar, mostrarNota: b.mostrarNota, marcaAgua: b.marcaAgua,
-          copiarPegar: b.copiarPegar, modo: b.modo, plano: b.plano, preguntas: b.preguntas,
+          modo: b.modo, plano: b.plano, preguntas: b.preguntas,
         });
         estadoGuardado.textContent = 'Guardado';
         estadoGuardado.dataset.estado = '';
@@ -573,21 +767,22 @@ async function vistaExamen(E, pestana) {
     ctx.limpiar.forEach(f => f());
   };
 
-  // Cabecera común
-  const titulo = h('h1');
-  const chips = h('div', { class: 'fila' });
-  const datos = h('p', { class: 'suave pequeno', style: { margin: 0 } });
-  const codigo = h('span', { class: 'codigo codigo-medio' });
+  // Menú lateral (el examen, sus pasos y el botón de abrir) y panel con el paso actual
+  const titulo = h('b', { class: 'examen-menu-titulo' });
+  const chips = h('span');
+  const datos = h('p', { class: 'examen-panel-datos' });
+  const codigo = h('span', { class: 'codigo' });
   const botonAbrir = h('button', { class: 'boton' });
-  const pasos = h('nav', { class: 'pasos-examen', 'aria-label': 'Pasos del examen' });
+  const pasos = h('nav', { class: 'examen-pasos', 'aria-label': 'Pasos del examen' });
   const contenido = h('div', { class: 'contenido-pestana' });
   const pie = h('div', { class: 'pie-paso' });
   const migaTitulo = h('span');
 
   function pintarCabecera() {
     const x = { ...ctx.ex, ...ctx.borrador, abierto: ctx.ex.abierto, alumnos: ctx.ex.alumnos };
-    document.title = `TestGO · ${x.titulo}`;
+    document.title = `TestGO · ${x.titulo} · ${PESTANAS[pestana]}`;
     titulo.textContent = x.titulo;
+    titulo.title = x.titulo;
     migaTitulo.textContent = x.titulo;
     vaciar(chips, x.abierto ? h('span', { class: 'chip exito' }, 'Abierto') : h('span', { class: 'chip' }, 'Cerrado'));
     const puntos = x.preguntas.reduce((s, p) => s + p.puntos, 0);
@@ -600,13 +795,13 @@ async function vistaExamen(E, pestana) {
     if (pestana === 'revisar' && !x.abierto) botonAbrir.hidden = true;
     else botonAbrir.hidden = false;
     const estado = estadoPasos(N.limpiarExamen({ ...x }, x));
-    vaciar(pasos, Object.entries(PESTANAS).map(([clave, texto], n) => h('a', {
+    vaciar(pasos, h('div', { class: 'admin-menu-etiqueta' }, 'Pasos'), Object.entries(PESTANAS).map(([clave, texto], n) => h('a', {
       href: rutaExamen(E, clave),
-      class: `paso-examen ${clave === pestana ? 'actual' : ''} ${estado[clave] || ''}`,
+      class: `examen-paso ${clave === pestana ? 'actual' : ''} ${estado[clave] || ''}`,
       'aria-current': clave === pestana ? 'step' : null,
     },
     h('span', { class: 'num' }, estado[clave] === 'hecho' && clave !== pestana ? icono('check') : n + 1),
-    h('span', {}, texto),
+    h('span', { class: 'texto' }, texto),
     clave === 'directo' && x.abierto ? h('span', { class: 'punto-vivo', 'aria-label': 'abierto' }) : null,
     )));
   }
@@ -621,24 +816,32 @@ async function vistaExamen(E, pestana) {
     siguiente ? h('a', { class: 'boton primario', href: rutaExamen(E, siguiente[0]) }, siguiente[1], icono('derecha')) : h('span'),
   );
 
-  vaciar(app,
-    h('nav', { class: 'migas', 'aria-label': 'Ruta' }, h('a', { href: '#/' }, 'Exámenes'), h('span', { 'aria-hidden': 'true' }, '/'), migaTitulo, h('span', { class: 'espacio' }), estadoGuardado),
-    h('header', { class: 'cabecera-examen' },
-      h('div', { class: 'pila', style: { gap: '6px', minWidth: 0 } }, h('div', { class: 'fila' }, titulo, chips), datos),
-      h('div', { class: 'acciones-examen' },
-        h('div', { class: 'caja-codigo' },
-          h('span', { class: 'pequeno suave' }, 'Código'),
+  vaciar(app, h('div', { class: 'examen-layout' },
+    h('aside', { class: 'examen-menu', 'aria-label': 'Examen' },
+      h('a', { class: 'examen-volver', href: '#/' }, icono('izquierda'), 'Inicio'),
+      h('div', { class: 'examen-menu-cabecera' }, titulo, chips),
+      h('div', { class: 'examen-codigo' },
+        h('span', { class: 'admin-menu-etiqueta' }, 'Código para los alumnos'),
+        h('div', { class: 'examen-codigo-fila' },
           codigo,
-          h('button', { class: 'boton fantasma mini', title: 'Copiar código', 'aria-label': 'Copiar código', onclick: () => copiar(ctx.ex.codigo, 'Código copiado') }, icono('copia')),
-          h('button', { class: 'boton fantasma mini', title: 'Mostrar a la clase', 'aria-label': 'Mostrar el código a la clase', onclick: () => mostrarALaClase(ctx) }, icono('pantalla')),
+          h('button', { class: 'boton fantasma mini solo-icono', title: 'Copiar código', 'aria-label': 'Copiar código', onclick: () => copiar(ctx.ex.codigo, 'Código copiado') }, icono('copia')),
+          h('button', { class: 'boton fantasma mini solo-icono', title: 'Mostrar a la clase', 'aria-label': 'Mostrar el código a la clase', onclick: () => mostrarALaClase(ctx) }, icono('pantalla')),
         ),
-        botonAbrir,
       ),
+      pasos,
+      h('div', { class: 'examen-menu-pie' }, botonAbrir, estadoGuardado),
     ),
-    pasos,
-    contenido,
-    pie,
-  );
+    h('div', { class: 'examen-panel' },
+      h('header', { class: 'admin-cabecera examen-panel-cabecera' },
+        h('p', { class: 'examen-panel-paso' }, `Paso ${Object.keys(PESTANAS).indexOf(pestana) + 1} de 5`),
+        h('h1', {}, PESTANAS[pestana]),
+        h('p', {}, DESCRIPCION_PASO[pestana]),
+        datos,
+      ),
+      contenido,
+      pie,
+    ),
+  ));
   pintarCabecera();
 
   ({ preguntas: pestanaPreguntas, ajustes: pestanaAjustes, revisar: pestanaRevisar, directo: pestanaDirecto, resultados: pestanaResultados })[pestana](ctx, contenido);
@@ -997,12 +1200,20 @@ function menuAnadir(anadir, lado = 'derecha') {
 
 function pestanaAjustes(ctx, contenido) {
   const b = ctx.borrador;
+  const normas = ajustesCentro.normas || {};
+  // Lo que fija el centro no se puede cambiar: se aplica al borrador y se explica
+  const fijado = { marcaAgua: !!normas.marcaAgua, barajar: !!normas.barajar, mostrarNota: !!normas.ocultarNota };
+  const cumplirNormas = () => {
+    const antes = JSON.stringify([b.marcaAgua, b.barajar, b.mostrarNota, b.maxSalidas]);
+    Object.assign(b, N.aplicarNormas(b, normas));
+    if (JSON.stringify([b.marcaAgua, b.barajar, b.mostrarNota, b.maxSalidas]) !== antes) ctx.programar();
+  };
   const entrada = (clave, atributos, convertir = v => v) =>
     h('input', { ...atributos, value: b[clave], oninput: e => ((b[clave] = convertir(e.target.value)), ctx.programar()) });
   const interruptor = (clave, texto, explicacion) =>
-    h('label', { class: 'ajuste-interruptor' },
-      h('span', {}, h('b', {}, texto), h('small', {}, explicacion)),
-      h('input', { type: 'checkbox', role: 'switch', class: 'interruptor', checked: !!b[clave], onchange: e => ((b[clave] = e.target.checked), ctx.programar(), pintar()) }));
+    h('label', { class: 'ajuste-interruptor' + (fijado[clave] ? ' fijado' : '') },
+      h('span', {}, h('b', {}, texto), h('small', {}, fijado[clave] ? 'Lo fija el centro.' : explicacion)),
+      h('input', { type: 'checkbox', role: 'switch', class: 'interruptor', checked: !!b[clave], disabled: fijado[clave], onchange: e => ((b[clave] = e.target.checked), ctx.programar(), pintar()) }));
 
   const seccion = (tituloSeccion, descripcion, ...hijos) =>
     h('section', { class: 'tarjeta ajustes-seccion' },
@@ -1012,11 +1223,14 @@ function pestanaAjustes(ctx, contenido) {
   const elegirModo = clave => {
     b.modo = clave;
     Object.assign(b, N.MODOS[clave].ajustes);
+    cumplirNormas();
     ctx.programar();
     pintar();
   };
 
   function pintar() {
+    cumplirNormas();
+    const lasNormas = N.normasActivas(normas);
     const penalizacion = h('select', { onchange: e => ((b.penalizacion = Number(e.target.value)), ctx.programar()) },
       [['0', 'No restan'], ['0.25', 'Restan 1/4 de la pregunta'], ['0.3333', 'Restan 1/3 de la pregunta'], ['0.5', 'Restan 1/2 de la pregunta'], ['1', 'Restan la pregunta entera']].map(([v, t]) => h('option', { value: v }, t)));
     if (![...penalizacion.options].some(o => Math.abs(Number(o.value) - b.penalizacion) < 0.001)) penalizacion.append(h('option', { value: String(b.penalizacion) }, `Restan ${N.numero(b.penalizacion * 100)} %`));
@@ -1034,13 +1248,15 @@ function pestanaAjustes(ctx, contenido) {
         !b.modo ? h('p', { class: 'pequeno texto-aviso', style: { margin: '12px 0 0' } }, 'Todavía no has elegido: se usan los ajustes por defecto (bloqueo a la primera salida).') : null,
       ),
       seccion('Qué pasará durante el examen', personalizado ? 'Cambia cada opción a tu gusto.' : 'Lo que hace el modo elegido.',
+        lasNormas.length ? h('div', { class: 'aviso normas-centro' }, h('b', {}, 'Normas de tu centro'), h('ul', {}, lasNormas.map(t => h('li', {}, t)))) : null,
         personalizado
           ? [
-            campo('Bloquear tras salir', entrada('maxSalidas', { type: 'number', min: 0, max: 50 }, Number), 'Número de veces que puede salir de la pantalla del examen antes de bloquearse. 0 = no bloquear nunca.'),
+            Number(normas.salidasMaximas) > 0
+              ? campo('Bloquear tras salir', entrada('maxSalidas', { type: 'number', min: 1, max: Number(normas.salidasMaximas), onchange: () => pintar() }, Number), `Entre 1 y ${normas.salidasMaximas}: lo fija el centro.`)
+              : campo('Bloquear tras salir', entrada('maxSalidas', { type: 'number', min: 0, max: 50 }, Number), 'Número de veces que puede salir de la pantalla del examen antes de bloquearse. 0 = no bloquear nunca.'),
             interruptor('barajar', 'Barajar preguntas y opciones', 'Cada alumno las ve en un orden distinto.'),
             interruptor('mostrarNota', 'Enseñar la nota al entregar', 'Si hay preguntas de desarrollo, la nota será provisional hasta que las corrijas.'),
             interruptor('marcaAgua', 'Marca de agua con el nombre y la fecha', 'El nombre del alumno y la fecha salen de fondo: si alguien hace una foto o una captura, se sabe de quién es.'),
-            interruptor('copiarPegar', 'Permitir copiar y pegar', 'Desactivado, los alumnos no pueden copiar, cortar, pegar ni arrastrar texto, y ves en directo cada vez que lo intentan.'),
           ]
           : [
             h('ul', { class: 'lista-explicacion' }, N.explicarControl(b).map(t => h('li', {}, t))),

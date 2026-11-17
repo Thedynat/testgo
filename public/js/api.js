@@ -7,3 +7,5 @@ const modulo = MODO === 'firebase' ? await import('./api-firebase.js') : await i
 export { MODO };
 export const alumno = modulo.alumno;
 export const profesor = modulo.profesor;
+// Solo en Firebase: la administración del centro (en el servidor propio no existe)
+export const admin = modulo.admin || null;

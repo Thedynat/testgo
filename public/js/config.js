@@ -5,12 +5,12 @@
 export const MODO = 'firebase';
 
 export const FIREBASE = {
-  apiKey: 'AIzaSyAmAjh9HMrJitgbOgPcXkO0gnxiWpfpVPM',
-  authDomain: 'testgo-e26db.firebaseapp.com',
-  projectId: 'testgo-e26db',
-  storageBucket: 'testgo-e26db.firebasestorage.app',
-  messagingSenderId: '548189251285',
-  appId: '1:548189251285:web:d1a27af96aff9ecde8645c',
+  apiKey: 'AIzaSyA-7l2MksISfztqtJK-eLddVVcn6NLUMpA',
+  authDomain: 'testgo-58376.firebaseapp.com',
+  projectId: 'testgo-58376',
+  storageBucket: 'testgo-58376.firebasestorage.app',
+  messagingSenderId: '233392639880',
+  appId: '1:233392639880:web:1e9a91c0e062085859b43d',
 };
 
 // Solo pueden ser profesores las cuentas de este dominio (tiene que coincidir con firestore.rules)

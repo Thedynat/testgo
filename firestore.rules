@@ -1,9 +1,18 @@
 rules_version = '2';
 
 // TestGO en Firebase (plan gratuito). Sin Cloud Functions, la seguridad está aquí:
-// - Profesor: cuenta verificada del dominio del centro. Solo ve y toca sus exámenes.
+// - Profesor: cuenta verificada de un dominio permitido y con su ficha activa. Solo ve y toca sus exámenes.
+// - Administrador: los principales están fijos aquí; el resto se nombra desde el panel (ajustes/admins).
 // - Alumno: sesión anónima. Solo crea y modifica su propio intento, dentro de su tiempo,
 //   y nunca ve las soluciones (están en examenes/{E}, que solo lee el profesor).
+//
+// Ajustes del centro (solo los cambia un administrador):
+//   ajustes/acceso    { dominios: ['edu.gva.es'], aprobarRegistros }  quién puede ser profesor
+//   ajustes/admins    { correos: [...] }                              administradores además de los principales
+//   ajustes/centro    { nombre, logo, mensajeAlumnos }
+//   ajustes/examenes  { defectos: {...}, normas: {...} }
+//   ajustes/aviso     { texto, tipo, activo, t }                      aviso para todos los profesores
+//   profesores/{uid}  { email, estado: activo | pendiente | bloqueado, creado, ultimoAcceso }
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -15,15 +24,42 @@ service cloud.firestore {
       return conectado() && request.auth.token.email_verified == true && request.auth.token.email is string;
     }
 
-    // Administradores: entran aunque no sean del dominio y gestionan los exámenes de todos
+    function correo() {
+      return request.auth.token.email.lower();
+    }
+
+    // Un ajuste del centro, o {} si todavía no se ha guardado nunca
+    function ajuste(nombre) {
+      return exists(/databases/$(database)/documents/ajustes/$(nombre))
+        ? get(/databases/$(database)/documents/ajustes/$(nombre)).data
+        : {};
+    }
+
+    // Administradores principales: fijos, no se pueden quitar desde el panel
     // (tiene que coincidir con ADMINS en web/js/config.js)
+    function adminPrincipal() {
+      return correoVerificado() && correo() in ['thedynat@gmail.com', 'dj.vidalsoriano@edu.gva.es'];
+    }
+
     function admin() {
-      return correoVerificado() && request.auth.token.email.lower() in ['thedynat@gmail.com', 'dj.vidalsoriano@edu.gva.es'];
+      return adminPrincipal() || (correoVerificado() && correo() in ajuste('admins').get('correos', []));
+    }
+
+    function dominioPermitido() {
+      return correo().split('@')[1] in ajuste('acceso').get('dominios', ['edu.gva.es']);
+    }
+
+    function fichaProfesor() {
+      return /databases/$(database)/documents/profesores/$(request.auth.uid);
+    }
+
+    // Sin ficha todavía no puede trabajar; una ficha antigua sin estado cuenta como activa
+    function cuentaActiva() {
+      return exists(fichaProfesor()) && get(fichaProfesor()).data.get('estado', 'activo') == 'activo';
     }
 
     function profesor() {
-      return correoVerificado()
-        && (request.auth.token.email.lower().matches('^[^@]+@edu[.]gva[.]es$') || admin());
+      return correoVerificado() && (admin() || (dominioPermitido() && cuentaActiva()));
     }
 
     // Dueño de un documento, o administrador
@@ -47,11 +83,95 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
+    // Normas del centro que ningún examen puede saltarse
+    function cumpleNormas(d) {
+      let n = ajuste('examenes').get('normas', {});
+      return (n.get('marcaAgua', false) != true || d.marcaAgua == true)
+        && (n.get('barajar', false) != true || d.barajar == true)
+        && (n.get('ocultarNota', false) != true || d.mostrarNota == false)
+        && (n.get('salidasMaximas', 0) == 0 || (d.maxSalidas >= 1 && d.maxSalidas <= n.get('salidasMaximas', 0)));
+    }
+
     // ---------- Profesores ----------
 
     match /profesores/{uid} {
-      allow read, write: if profesor() && soyYo(uid);
+      // Cada uno lee su ficha (también si está pendiente o bloqueado, para saberlo)
+      allow get: if conectado() && soyYo(uid);
       allow read: if admin();
+
+      // La primera vez que entra se apunta él mismo: activo, o pendiente si el centro aprueba los registros
+      allow create: if correoVerificado() && soyYo(uid)
+        && (dominioPermitido() || admin())
+        && request.resource.data.keys().hasOnly(['email', 'estado', 'creado', 'ultimoAcceso'])
+        && request.resource.data.email == correo()
+        && request.resource.data.creado == request.time
+        && (request.resource.data.estado == 'pendiente'
+            || (request.resource.data.estado == 'activo' && (admin() || ajuste('acceso').get('aprobarRegistros', false) != true)));
+
+      // Después solo actualiza su correo y su último acceso; el estado no lo toca nunca
+      allow update: if correoVerificado() && soyYo(uid)
+        && cambia().hasOnly(['email', 'ultimoAcceso'])
+        && request.resource.data.email == correo()
+        && (!cambia().hasAny(['ultimoAcceso']) || request.resource.data.ultimoAcceso == request.time);
+
+      // Un administrador aprueba, bloquea o desbloquea
+      allow update: if admin()
+        && cambia().hasOnly(['estado'])
+        && request.resource.data.estado in ['activo', 'pendiente', 'bloqueado'];
+    }
+
+    // ---------- Ajustes del centro ----------
+
+    // Se lee antes de iniciar sesión, para comprobar el dominio del correo
+    match /ajustes/acceso {
+      allow get: if true;
+      allow write: if admin()
+        && request.resource.data.keys().hasOnly(['dominios', 'aprobarRegistros'])
+        && request.resource.data.dominios is list
+        && request.resource.data.dominios.size() > 0
+        && request.resource.data.dominios.size() <= 20
+        && request.resource.data.aprobarRegistros is bool;
+    }
+
+    match /ajustes/admins {
+      allow get: if conectado();
+      allow write: if admin()
+        && request.resource.data.keys().hasOnly(['correos'])
+        && request.resource.data.correos is list
+        && request.resource.data.correos.size() <= 50;
+    }
+
+    match /ajustes/centro {
+      allow get: if conectado();
+      allow write: if admin()
+        && request.resource.data.keys().hasOnly(['nombre', 'logo', 'mensajeAlumnos'])
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() <= 150
+        && (request.resource.data.logo == null || request.resource.data.logo is string)
+        && (!('mensajeAlumnos' in request.resource.data) || (request.resource.data.mensajeAlumnos is string && request.resource.data.mensajeAlumnos.size() <= 300));
+    }
+
+    match /ajustes/examenes {
+      allow get: if profesor();
+      allow write: if admin()
+        && request.resource.data.keys().hasOnly(['defectos', 'normas'])
+        && request.resource.data.defectos is map
+        && request.resource.data.normas is map;
+    }
+
+    match /ajustes/aviso {
+      allow get: if profesor();
+      allow write: if admin()
+        && request.resource.data.keys().hasOnly(['texto', 'tipo', 'activo', 't'])
+        && request.resource.data.texto is string
+        && request.resource.data.texto.size() <= 500
+        && request.resource.data.tipo in ['info', 'aviso', 'urgente']
+        && request.resource.data.activo is bool;
+    }
+
+    // Uso del centro: el administrador cuenta los intentos de todos los exámenes
+    match /{camino=**}/intentos/{uid} {
+      allow list: if admin();
     }
 
     // ---------- Exámenes completos (con soluciones) ----------
@@ -86,9 +206,11 @@ service cloud.firestore {
 
     match /publico/{E} {
       allow get: if conectado();
-      allow create: if profesor() && request.resource.data.propietario == request.auth.uid;
+      allow create: if profesor() && request.resource.data.propietario == request.auth.uid && cumpleNormas(request.resource.data);
       allow delete: if mio(resource.data);
-      allow update: if mio(resource.data) && request.resource.data.propietario == resource.data.propietario;
+      // Las normas se comprueban cuando cambia algún ajuste de control (así cambiar el logo no falla en exámenes antiguos)
+      allow update: if mio(resource.data) && request.resource.data.propietario == resource.data.propietario
+        && (!cambia().hasAny(['marcaAgua', 'barajar', 'mostrarNota', 'maxSalidas']) || cumpleNormas(request.resource.data));
 
       // Un intento por nombre: { uid } del alumno que lo tiene
       match /nombres/{clave} {

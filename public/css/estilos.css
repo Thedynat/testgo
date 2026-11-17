@@ -704,6 +704,14 @@ details summary { font-size: 0.9rem; }
 button.enlace-nav { border: none; background: none; font: inherit; font-size: 0.88rem; font-weight: 550; cursor: pointer; }
 button.enlace-nav:hover { background: var(--superficie-2); }
 
+/* Interruptor Profesor / Admin (solo lo ven los administradores) */
+.interruptor-modo { display: inline-flex; align-self: center; padding: 2px; gap: 2px; border: 1px solid var(--borde); border-radius: 999px; background: var(--superficie-2); margin: 0 4px; }
+.interruptor-opcion { border: none; background: none; font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--texto-2); padding: 4px 12px; border-radius: 999px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.interruptor-opcion:hover { color: var(--texto); }
+.interruptor-opcion.activo { background: var(--superficie); color: var(--texto); box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+.interruptor-opcion.activo:last-child { background: var(--acento); color: #fff; }
+.interruptor-opcion:focus-visible { outline: 2px solid var(--acento); outline-offset: 1px; }
+
 .migas { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 0.86rem; color: var(--texto-3); }
 .migas a { color: var(--texto-2); text-decoration: none; }
 .migas a:hover { color: var(--texto); text-decoration: underline; }
@@ -942,6 +950,29 @@ dialog.visor-imagen img { display: block; max-width: calc(96vw - 16px); max-heig
 .indice-pie { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--borde); }
 .indice-pie .menu > summary { width: 100%; }
 .menu-izquierda .menu-lista { left: 0; right: auto; }
+
+/* Cuenta: círculo con la inicial y su menú (Ver perfil / Salir) */
+.avatar { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--indigo), var(--celeste)); color: #fff; font-weight: 700; font-size: 0.9rem; line-height: 1; user-select: none; flex: none; }
+.avatar.grande { width: 56px; height: 56px; font-size: 1.4rem; }
+.menu-usuario { align-self: center; margin-left: 4px; }
+.menu-usuario > summary { cursor: pointer; transition: box-shadow 0.15s; }
+.menu-usuario > summary:hover, .menu-usuario[open] > summary { box-shadow: 0 0 0 3px var(--acento-suave); }
+.menu-usuario > summary:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+.menu-usuario .menu-lista { width: 240px; }
+.menu-cabecera { display: grid; gap: 2px; padding: 8px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--borde); }
+.menu-cabecera b { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-cabecera span { font-size: 0.78rem; color: var(--texto-2); }
+.menu-usuario .menu-lista button b { display: flex; align-items: center; gap: 8px; font-weight: 550; font-size: 0.88rem; }
+.menu-usuario .menu-lista svg { width: 16px; height: 16px; flex: none; color: currentColor; }
+.menu-usuario .menu-lista button.peligro { color: var(--peligro); }
+.menu-usuario .menu-lista button.peligro:hover { background: var(--peligro-suave); }
+
+/* Ventana «Tu perfil» */
+.perfil { display: grid; gap: 4px; min-width: min(360px, 80vw); }
+.perfil-cabecera { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--borde); }
+.perfil-cabecera b { overflow-wrap: anywhere; }
+.perfil-fila { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; font-size: 0.9rem; }
+.perfil-fila span { color: var(--texto-2); }
 .zona-editor { display: grid; gap: 10px; }
 .barra-editor { padding: 0 4px; }
 @media (max-width: 900px) {
@@ -1318,3 +1349,286 @@ input.codigo-oculto:focus { box-shadow: none; }
   .chip-salidas { padding: 2px 8px; flex: none; }
   .barra-titulo { min-width: 80px; }
 }
+
+/* ---------- Inicio (página principal del profesor) ---------- */
+/* Estilo documento: mucho aire, texto limpio, bordes finos y tablas sin cajas pesadas */
+.boton.acento { background: var(--acento); border-color: var(--acento); color: #fff; }
+.boton.acento:hover { background: #3f39e6; border-color: #3f39e6; }
+.boton.acento svg { color: #fff; }
+
+.inicio { max-width: 980px; margin: 0 auto; padding-bottom: 48px; }
+.inicio-cabecera { padding: 28px 0 8px; }
+.inicio-saludo { margin: 0 0 6px; font-size: 0.95rem; color: var(--texto-2); }
+.inicio-cabecera h1 { margin: 0; font-size: clamp(2rem, 4vw, 2.6rem); font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; }
+.inicio-resumen { margin: 10px 0 0; color: var(--texto-2); }
+
+.inicio-seccion { margin-top: 36px; }
+.seccion-etiqueta { display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; margin-bottom: 12px; border-bottom: 1px solid var(--borde); font-size: 0.82rem; font-weight: 600; color: var(--texto-2); }
+
+/* Empezar un examen: tarjetas con portada ilustrada */
+.galeria-empezar { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.tarjeta-empezar { display: flex; flex-direction: column; padding: 0; overflow: hidden; border: none; border-radius: 10px; background: var(--superficie); font: inherit; text-align: left; color: var(--texto); cursor: pointer; box-shadow: 0 0 0 1px rgb(15 15 15 / 8%), 0 2px 4px rgb(15 15 15 / 6%); transition: box-shadow 0.15s, background 0.15s; }
+.tarjeta-empezar:hover { box-shadow: 0 0 0 1px rgb(15 15 15 / 10%), 0 6px 16px rgb(15 15 15 / 10%); }
+.tarjeta-empezar:focus-visible { outline: none; box-shadow: var(--anillo), 0 0 0 1px var(--acento); }
+.tarjeta-empezar-portada { display: grid; place-items: center; height: 132px; background: var(--fondo-2); border-bottom: 1px solid var(--borde); transition: background 0.15s; }
+.tarjeta-empezar:hover .tarjeta-empezar-portada { background: var(--acento-suave); }
+.tarjeta-empezar-portada .ilustracion { height: 108px; width: auto; transition: transform 0.2s; }
+.tarjeta-empezar:hover .tarjeta-empezar-portada .ilustracion { transform: translateY(-2px) scale(1.03); }
+.tarjeta-empezar-texto { display: grid; gap: 4px; padding: 14px 16px 16px; }
+.tarjeta-empezar-texto b { font-size: 0.98rem; font-weight: 600; }
+.tarjeta-empezar-texto span { font-size: 0.86rem; line-height: 1.45; color: var(--texto-2); }
+@media (prefers-reduced-motion: reduce) { .tarjeta-empezar-portada .ilustracion { transition: none; } }
+
+/* Abiertos ahora */
+.punto-vivo { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: latido-vivo 1.8s infinite; flex: none; }
+@keyframes latido-vivo { 0% { box-shadow: 0 0 0 0 rgb(34 197 94 / 55%); } 70%, 100% { box-shadow: 0 0 0 7px rgb(34 197 94 / 0%); } }
+@media (prefers-reduced-motion: reduce) { .punto-vivo { animation: none; } }
+.lista-abiertos { display: grid; }
+.abierto-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 8px; margin: 0 -8px; border-radius: 6px; color: inherit; text-decoration: none; transition: background 0.12s; }
+.abierto-item:hover { background: var(--superficie-2); }
+.abierto-item:focus-visible { outline: none; box-shadow: var(--anillo); }
+.abierto-nombre { display: grid; gap: 2px; min-width: 0; }
+.abierto-nombre b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.abierto-nombre span { font-size: 0.84rem; color: var(--texto-2); }
+.enlace-accion { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 0.86rem; font-weight: 600; color: var(--acento); }
+.enlace-accion svg { width: 15px; height: 15px; transition: transform 0.15s; }
+.abierto-item:hover .enlace-accion svg { transform: translateX(3px); }
+
+/* Barra de la tabla: pestañas, búsqueda y «Nuevo» */
+.barra-tabla { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.barra-tabla .espacio { flex: 1; }
+.pestanas-tabla { display: flex; gap: 2px; }
+.pestanas-tabla button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: none; border-radius: 6px; background: none; font: inherit; font-size: 0.88rem; font-weight: 500; color: var(--texto-2); cursor: pointer; }
+.pestanas-tabla button:hover { background: var(--superficie-2); color: var(--texto); }
+.pestanas-tabla button.activo { color: var(--texto); font-weight: 600; box-shadow: inset 0 -2px 0 var(--texto); border-radius: 6px 6px 0 0; }
+.pestanas-tabla .cuenta { font-size: 0.78rem; color: var(--texto-3); }
+.buscador-tabla { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 8px; border-radius: 6px; color: var(--texto-3); transition: background 0.12s; }
+.buscador-tabla:hover, .buscador-tabla:focus-within { background: var(--superficie-2); }
+.buscador-tabla svg { width: 15px; height: 15px; flex: none; }
+.buscador-tabla input { width: 130px; height: 30px; padding: 0; border: none; background: none; box-shadow: none; font-size: 0.88rem; color: var(--texto); }
+.buscador-tabla input:focus { outline: none; box-shadow: none; width: 180px; }
+.barra-tabla select { width: auto; min-height: 32px; font-size: 0.86rem; }
+
+/* Menús de Inicio (Nuevo y las acciones de cada fila) */
+.menu-auto .menu-lista { width: 250px; }
+.menu-auto .menu-lista button b { display: flex; align-items: center; gap: 8px; font-weight: 550; font-size: 0.88rem; }
+.menu-auto .menu-lista button span { padding-left: 24px; }
+.menu-auto .menu-lista svg { width: 16px; height: 16px; flex: none; }
+.menu-auto .menu-lista button.peligro { color: var(--peligro); }
+.menu-auto .menu-lista button.peligro:hover { background: var(--peligro-suave); }
+.menu-fila .menu-lista { width: 170px; }
+.menu-nuevo > summary { list-style: none; }
+
+/* Tabla de exámenes */
+.tabla-examenes { display: grid; }
+.fila-examen { display: grid; grid-template-columns: minmax(180px, 1fr) 88px 84px 76px 88px 72px 76px; align-items: center; gap: 8px; min-height: 46px; padding: 0 8px; border-bottom: 1px solid var(--borde); cursor: pointer; transition: background 0.1s; }
+.fila-examen:hover { background: color-mix(in srgb, var(--superficie-2) 75%, transparent); }
+.fila-examen:focus-visible { outline: none; box-shadow: inset var(--anillo); }
+.fila-examen.cabecera { min-height: 34px; font-size: 0.78rem; font-weight: 500; color: var(--texto-3); cursor: default; }
+.fila-examen.cabecera:hover { background: none; }
+.fila-examen.esqueleto { min-height: 46px; margin-bottom: 4px; border: none; border-radius: 6px; }
+.celda-nombre { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.icono-fila { display: grid; place-items: center; flex: none; color: var(--texto-3); }
+.icono-fila svg { width: 18px; height: 18px; }
+.celda-titulo { display: grid; min-width: 0; }
+.celda-titulo b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.celda-titulo small { font-size: 0.78rem; color: var(--texto-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.etiqueta { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 500; line-height: 1.6; }
+.etiqueta.verde { background: var(--exito-suave); color: var(--exito); box-shadow: inset 0 0 0 1px var(--exito-borde); }
+.etiqueta.gris { background: var(--superficie-2); color: var(--texto-2); }
+.celda-codigo { font-family: var(--mono); font-size: 0.84rem; letter-spacing: 0.08em; color: var(--texto-2); }
+.celda-dato { font-size: 0.88rem; color: var(--texto-2); white-space: nowrap; }
+.celda-acciones { display: flex; justify-content: flex-end; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+.fila-examen:hover .celda-acciones, .fila-examen:focus-within .celda-acciones, .celda-acciones:has(.menu[open]) { opacity: 1; }
+@media (hover: none) { .celda-acciones { opacity: 1; } }
+.solo-icono { width: 32px; padding: 0; justify-content: center; }
+.menu-fila .solo-icono svg { stroke-width: 3.2; }
+.menu-fila > summary { list-style: none; }
+
+.tabla-vacia { display: grid; justify-items: center; gap: 6px; padding: 28px 16px 12px; text-align: center; }
+.tabla-vacia .ilustracion { width: min(300px, 80%); height: auto; margin-bottom: 8px; }
+.tabla-vacia .ilustracion.pequena { width: 160px; }
+.tabla-vacia b { font-size: 1rem; }
+.tabla-vacia p { max-width: 400px; margin: 0; color: var(--texto-2); font-size: 0.9rem; }
+.tabla-vacia .boton { margin-top: 8px; }
+
+/* Con exámenes, «Empezar» se queda en dos accesos compactos para que la tabla se vea enseguida */
+.galeria-empezar.compacta { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.galeria-empezar.compacta .tarjeta-empezar { flex-direction: row; align-items: center; }
+.galeria-empezar.compacta .tarjeta-empezar-portada { flex: none; width: 112px; height: auto; min-height: 84px; align-self: stretch; border-bottom: none; border-right: 1px solid var(--borde); }
+.galeria-empezar.compacta .tarjeta-empezar-portada .ilustracion { height: 60px; width: auto; max-width: 96px; }
+.galeria-empezar.compacta .tarjeta-empezar-texto { padding: 12px 14px; }
+.galeria-empezar.compacta .tarjeta-empezar-texto span { font-size: 0.83rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+@media (max-width: 900px) {
+  .fila-examen:not(.fila-profesor) { grid-template-columns: minmax(160px, 1fr) 88px 76px 88px 76px; }
+  .fila-examen:not(.fila-profesor) > :nth-child(3), .fila-examen:not(.fila-profesor) > :nth-child(6) { display: none; }
+}
+
+@media (max-width: 760px) {
+  .fila-examen { grid-template-columns: 1fr auto auto; }
+  .fila-examen .celda-codigo, .fila-examen .celda-dato, .fila-examen.cabecera { display: none; }
+  .barra-tabla .espacio { display: none; }
+  .buscador-tabla { flex: 1; }
+  .buscador-tabla input, .buscador-tabla input:focus { width: 100%; }
+  .celda-acciones .boton:not(.solo-icono) { display: none; }
+}
+
+/* Barra superior en el móvil: el logo ya lleva a Inicio, así cabe el interruptor y la cuenta */
+@media (max-width: 560px) {
+  .profesor .cabecera { gap: 8px; padding: 0 14px; }
+  .profesor .cabecera .insignia, .profesor .cabecera .marca span { display: none; }
+  .profesor #nav [data-ruta="lista"] { display: none; }
+  .interruptor-opcion { padding: 4px 10px; }
+}
+
+/* ---------- Administración ---------- */
+/* Menú lateral con las secciones y, a la derecha, bloques de ajustes con filas separadas por líneas finas */
+.admin { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 40px; max-width: 1080px; margin: 0 auto; padding: 24px 0 56px; }
+.admin-menu { position: sticky; top: 84px; align-self: start; display: grid; gap: 18px; }
+.admin-menu-titulo { padding: 0 10px; font-size: 0.95rem; font-weight: 700; }
+.admin-menu-grupo { display: grid; gap: 1px; }
+.admin-menu-etiqueta { padding: 0 10px 4px; font-size: 0.75rem; font-weight: 600; color: var(--texto-3); }
+.admin-menu-enlace { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--texto-2); text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: background 0.1s, color 0.1s; }
+.admin-menu-enlace svg { width: 17px; height: 17px; flex: none; color: var(--texto-3); }
+.admin-menu-enlace:hover { background: var(--superficie-2); color: var(--texto); }
+.admin-menu-enlace.activo { background: var(--superficie-2); color: var(--texto); font-weight: 600; }
+.admin-menu-enlace.activo svg { color: var(--acento); }
+.admin-menu-enlace:focus-visible { outline: none; box-shadow: var(--anillo); }
+
+.admin-cabecera { padding-bottom: 18px; margin-bottom: 8px; border-bottom: 1px solid var(--borde); }
+.admin-cabecera h1 { margin: 0; font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+.admin-cabecera p { margin: 6px 0 0; color: var(--texto-2); }
+.admin-contenido { display: grid; gap: 8px; }
+.admin-contenido > .aviso { margin: 16px 0 4px; }
+.nota-pie { margin: 14px 2px 0; font-size: 0.82rem; color: var(--texto-3); }
+
+.ajuste-grupo { padding-top: 22px; }
+.ajuste-grupo-cabecera h2 { margin: 0; font-size: 1.02rem; font-weight: 650; }
+.ajuste-grupo-cabecera p { margin: 4px 0 0; font-size: 0.87rem; line-height: 1.5; color: var(--texto-2); max-width: 640px; }
+.ajuste-grupo-cuerpo { margin-top: 10px; border-top: 1px solid var(--borde); }
+.ajuste-fila { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 2px; border-bottom: 1px solid var(--borde); }
+.ajuste-fila.apilada { flex-direction: column; align-items: stretch; gap: 10px; }
+.ajuste-fila-texto { display: grid; gap: 3px; min-width: 0; }
+.ajuste-fila-texto b { font-size: 0.92rem; font-weight: 550; }
+.ajuste-fila-texto small { font-size: 0.83rem; line-height: 1.45; color: var(--texto-2); }
+.ajuste-fila-control { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex: none; }
+.ajuste-fila.apilada .ajuste-fila-control { justify-content: flex-start; flex: auto; }
+.ajuste-fila-control > input[type="text"], .ajuste-fila-control > select { width: 260px; max-width: 100%; }
+.ajuste-fila.apilada .ajuste-fila-control > textarea, .ajuste-fila.apilada .ajuste-fila-control > input, .ajuste-fila.apilada .ajuste-fila-control > .pila { width: 100%; }
+.campo-corto { width: 100px !important; }
+.ajuste-pie { display: flex; justify-content: flex-end; padding: 14px 0 6px; }
+.contador { justify-self: end; font-size: 0.78rem; color: var(--texto-3); }
+.vista-previa { width: 100%; }
+.ajuste-fila .vista-centro { width: 100%; }
+
+/* Dominios como etiquetas */
+.chips-dominio { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-dominio { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 10px; border-radius: 6px; background: var(--superficie-2); font-family: var(--mono); font-size: 0.85rem; }
+.chip-dominio button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: none; border-radius: 4px; background: none; color: var(--texto-3); cursor: pointer; }
+.chip-dominio button:hover { background: var(--borde); color: var(--texto); }
+.chip-dominio svg { width: 13px; height: 13px; }
+
+/* Etiquetas de rol y estado */
+.etiqueta.azul { background: var(--info-suave); color: var(--info); box-shadow: inset 0 0 0 1px var(--info-borde); }
+.etiqueta.amarilla { background: var(--aviso-suave); color: var(--aviso); box-shadow: inset 0 0 0 1px var(--aviso-borde); }
+.etiqueta.roja { background: var(--peligro-suave); color: var(--peligro); box-shadow: inset 0 0 0 1px var(--peligro-borde); }
+
+/* Tabla de profesores */
+.fila-profesor { grid-template-columns: minmax(200px, 1fr) 100px 76px 112px 44px; min-height: 54px; cursor: default; }
+.celda-titulo small.rol-admin { color: var(--info); font-weight: 550; }
+.fila-profesor:hover { background: color-mix(in srgb, var(--superficie-2) 50%, transparent); }
+.fila-profesor .avatar { width: 28px; height: 28px; font-size: 0.8rem; }
+.celda-acciones.visible { opacity: 1; }
+
+/* Uso del centro */
+.tiles-uso { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); padding-top: 14px; }
+.tile-uso { display: grid; gap: 2px; min-height: 92px; padding: 14px 16px; border-radius: 10px; background: var(--fondo-2); box-shadow: inset 0 0 0 1px var(--borde); }
+.tile-uso b { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.02em; }
+.tile-uso span { font-size: 0.86rem; color: var(--texto-2); }
+.tile-uso small { font-size: 0.78rem; color: var(--aviso); }
+.resultado-limpieza { display: grid; gap: 10px; justify-items: start; padding-top: 12px; }
+.resultado-limpieza:empty { display: none; }
+
+/* Aviso del centro en Inicio (y su vista previa) */
+.banner-aviso { display: flex; align-items: flex-start; gap: 12px; margin: 20px 0 0; padding: 12px 12px 12px 16px; border-radius: 10px; background: var(--info-suave); box-shadow: inset 0 0 0 1px var(--info-borde); color: var(--texto); }
+.banner-aviso > svg { width: 18px; height: 18px; flex: none; margin-top: 2px; color: var(--info); }
+.banner-aviso p { flex: 1; margin: 0; font-size: 0.92rem; line-height: 1.5; white-space: pre-line; }
+.banner-aviso.aviso { background: var(--aviso-suave); box-shadow: inset 0 0 0 1px var(--aviso-borde); }
+.banner-aviso.aviso > svg { color: var(--aviso); }
+.banner-aviso.urgente { background: var(--peligro-suave); box-shadow: inset 0 0 0 1px var(--peligro-borde); }
+.banner-aviso.urgente > svg { color: var(--peligro); }
+.banner-aviso .boton { margin: -4px -2px -4px 0; }
+.vista-previa .banner-aviso { margin: 0; }
+
+/* Normas del centro en los ajustes del examen */
+.normas-centro { background: var(--info-suave); border-color: var(--info-borde); color: var(--texto); }
+.ajuste-interruptor.fijado { opacity: 0.75; }
+.ajuste-interruptor.fijado small { color: var(--info); font-weight: 550; }
+
+/* Mensaje del centro en la entrada del alumno */
+.mensaje-centro { margin: -6px 0 16px; padding: 10px 12px; border-radius: 10px; background: var(--aviso-suave); border: 1px solid var(--aviso-borde); color: #78350f; font-size: 0.88rem; line-height: 1.45; text-align: center; }
+
+@media (max-width: 860px) {
+  .admin { grid-template-columns: 1fr; gap: 16px; padding-top: 12px; }
+  .admin-menu { position: static; display: flex; gap: 4px; overflow-x: auto; padding-bottom: 6px; border-bottom: 1px solid var(--borde); }
+  .admin-menu-titulo, .admin-menu-etiqueta { display: none; }
+  .admin-menu-grupo { display: flex; gap: 4px; }
+  .admin-menu-enlace { white-space: nowrap; }
+  .fila-profesor { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .fila-profesor > :nth-child(3), .fila-profesor > :nth-child(4) { display: none; }
+  .ajuste-fila { flex-direction: column; align-items: stretch; gap: 10px; }
+  .ajuste-fila-control { justify-content: flex-start; }
+}
+.ajuste-fila-control > .fila { flex-wrap: nowrap; }
+.ajuste-fila-control > .fila > input[type="text"] { width: 200px; }
+
+/* ---------- Página del examen: menú lateral como en Administración ---------- */
+body:has(.examen-layout) main { max-width: 1320px; }
+.examen-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 36px; padding-top: 4px; }
+.examen-menu { position: sticky; top: 84px; align-self: start; display: grid; gap: 18px; max-height: calc(100vh - 100px); overflow-y: auto; }
+.examen-volver { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 4px 8px 4px 4px; border-radius: 6px; color: var(--texto-2); text-decoration: none; font-size: 0.86rem; font-weight: 500; }
+.examen-volver:hover { background: var(--superficie-2); color: var(--texto); }
+.examen-volver svg { width: 16px; height: 16px; }
+.examen-menu-cabecera { display: grid; gap: 8px; padding: 0 10px; justify-items: start; }
+.examen-menu-titulo { font-size: 1rem; font-weight: 700; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.examen-codigo { display: grid; gap: 4px; padding: 10px; margin: 0 2px; border-radius: 10px; background: var(--fondo-2); box-shadow: inset 0 0 0 1px var(--borde); }
+.examen-codigo .admin-menu-etiqueta { padding: 0; }
+.examen-codigo-fila { display: flex; align-items: center; gap: 2px; }
+.examen-codigo-fila .codigo { margin-right: auto; font-size: 1.05rem; }
+
+.examen-pasos { display: grid; gap: 1px; }
+.examen-paso { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--texto-2); text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: background 0.1s, color 0.1s; }
+.examen-paso:hover { background: var(--superficie-2); color: var(--texto); }
+.examen-paso:focus-visible { outline: none; box-shadow: var(--anillo); }
+.examen-paso .texto { flex: 1; }
+.examen-paso .num { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--borde-fuerte); font-size: 0.74rem; font-weight: 700; }
+.examen-paso .num svg { width: 12px; height: 12px; }
+.examen-paso.hecho .num { background: var(--exito); border-color: var(--exito); color: #fff; }
+.examen-paso.aviso .num { border-color: #f59e0b; color: var(--aviso); }
+.examen-paso.actual { background: var(--superficie-2); color: var(--texto); font-weight: 600; }
+.examen-paso.actual .num { background: var(--acento); border-color: var(--acento); color: #fff; }
+.examen-menu-pie { display: grid; gap: 8px; padding: 0 2px; }
+.examen-menu-pie .boton { width: 100%; justify-content: center; }
+.examen-menu-pie .estado-guardado { justify-self: center; }
+
+.examen-panel { min-width: 0; }
+.examen-panel-cabecera { margin-bottom: 20px; }
+.examen-panel-paso { margin: 0 0 4px !important; font-size: 0.8rem !important; font-weight: 600; color: var(--acento) !important; }
+.examen-panel-datos { margin: 8px 0 0 !important; font-size: 0.84rem !important; color: var(--texto-3) !important; }
+
+@media (max-width: 960px) {
+  .examen-layout { grid-template-columns: 1fr; gap: 16px; }
+  .examen-menu { position: static; max-height: none; grid-template-columns: 1fr auto; align-items: center; gap: 10px 16px; padding-bottom: 12px; border-bottom: 1px solid var(--borde); }
+  .examen-volver, .examen-menu-cabecera { grid-column: 1 / -1; }
+  .examen-codigo { grid-column: 1; }
+  .examen-menu-pie { grid-column: 2; grid-row: 3; }
+  .examen-pasos { grid-column: 1 / -1; display: flex; gap: 4px; overflow-x: auto; }
+  .examen-pasos .admin-menu-etiqueta { display: none; }
+  .examen-paso { white-space: nowrap; }
+}
+
+/* Entrada de los alumnos: acceso para profesores */
+.acceso-profesor { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--borde); font-size: 0.86rem; color: var(--texto-2); }
+.acceso-profesor .boton { color: var(--acento); font-weight: 600; }
+.acceso-profesor .boton svg { color: var(--acento); }
