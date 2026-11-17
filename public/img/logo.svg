@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="180 290 900 690">
+  <style>
+    .t { fill: url(#marino); }
+  </style>
+  <defs>
+    <linearGradient id="marino" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#181E48"/>
+      <stop offset="1" stop-color="#0C1230"/>
+    </linearGradient>
+    <linearGradient id="check" x1="0.35" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#4B45FB"/>
+      <stop offset="0.45" stop-color="#4E6CFC"/>
+      <stop offset="1" stop-color="#4EA8FC"/>
+    </linearGradient>
+  </defs>
+  <path class="t" d="M205 470 Q260 330 365 310 L895 312 Q906 318 897 327 L645 580 L597 532 Q557 488 495 484 L212 482 Q198 480 205 470 Z"/>
+  <path class="t" d="M395 540 L395 855 Q405 950 497 962 Q560 960 588 912 L592 745 Z"/>
+  <path fill="url(#check)" d="M400 530 Q400 520 412 520 L490 520 Q545 522 578 558 L645 632 L895 383 Q950 357 1030 357 Q1066 360 1060 393 Q1057 405 1048 414 L728 740 Q690 772 650 770 Q610 768 585 745 L402 548 Q398 540 400 530 Z"/>
+</svg>

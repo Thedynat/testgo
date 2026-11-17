@@ -1,0 +1,192 @@
+rules_version = '2';
+
+// TestGO en Firebase (plan gratuito). Sin Cloud Functions, la seguridad está aquí:
+// - Profesor: cuenta verificada del dominio del centro. Solo ve y toca sus exámenes.
+// - Alumno: sesión anónima. Solo crea y modifica su propio intento, dentro de su tiempo,
+//   y nunca ve las soluciones (están en examenes/{E}, que solo lee el profesor).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function conectado() {
+      return request.auth != null;
+    }
+
+    function correoVerificado() {
+      return conectado() && request.auth.token.email_verified == true && request.auth.token.email is string;
+    }
+
+    // Administradores: entran aunque no sean del dominio y gestionan los exámenes de todos
+    // (tiene que coincidir con ADMINS en web/js/config.js)
+    function admin() {
+      return correoVerificado() && request.auth.token.email.lower() in ['thedynat@gmail.com', 'dj.vidalsoriano@edu.gva.es'];
+    }
+
+    function profesor() {
+      return correoVerificado()
+        && (request.auth.token.email.lower().matches('^[^@]+@edu[.]gva[.]es$') || admin());
+    }
+
+    // Dueño de un documento, o administrador
+    function mio(datos) {
+      return profesor() && (datos.propietario == request.auth.uid || admin());
+    }
+
+    function soyYo(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function publico(E) {
+      return get(/databases/$(database)/documents/publico/$(E)).data;
+    }
+
+    function duenoDe(E) {
+      return profesor() && exists(/databases/$(database)/documents/publico/$(E)) && mio(publico(E));
+    }
+
+    function cambia() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // ---------- Profesores ----------
+
+    match /profesores/{uid} {
+      allow read, write: if profesor() && soyYo(uid);
+      allow read: if admin();
+    }
+
+    // ---------- Exámenes completos (con soluciones) ----------
+
+    match /examenes/{E} {
+      allow read, delete: if mio(resource.data);
+      allow update: if mio(resource.data) && request.resource.data.propietario == resource.data.propietario;
+      allow create: if profesor() && request.resource.data.propietario == request.auth.uid;
+    }
+
+    // ---------- Códigos ----------
+
+    match /codigos/{codigo} {
+      allow get: if conectado();
+      allow create: if mio(request.resource.data);
+      allow delete: if mio(resource.data);
+    }
+
+    // ---------- Imágenes (en Firestore: el plan gratuito no tiene Storage) ----------
+
+    match /imagenes/{id} {
+      allow get: if conectado();
+      allow create: if profesor()
+        && request.resource.data.propietario == request.auth.uid
+        && request.resource.data.datos is string
+        && request.resource.data.datos.size() < 950000
+        && request.resource.data.datos.split(';base64,')[0] in ['data:image/png', 'data:image/jpeg', 'data:image/webp', 'data:image/gif'];
+      allow delete: if mio(resource.data);
+    }
+
+    // ---------- Lo que ve el alumno ----------
+
+    match /publico/{E} {
+      allow get: if conectado();
+      allow create: if profesor() && request.resource.data.propietario == request.auth.uid;
+      allow delete: if mio(resource.data);
+      allow update: if mio(resource.data) && request.resource.data.propietario == resource.data.propietario;
+
+      // Un intento por nombre: { uid } del alumno que lo tiene
+      match /nombres/{clave} {
+        allow read, write: if duenoDe(E);
+        allow get: if conectado();
+        allow create: if conectado()
+          && publico(E).abierto == true
+          && request.resource.data.keys().hasOnly(['uid', 'nombre'])
+          && request.resource.data.uid == request.auth.uid
+          && exists(/databases/$(database)/documents/publico/$(E)/intentos/$(request.auth.uid)) == false
+          && getAfter(/databases/$(database)/documents/publico/$(E)/intentos/$(request.auth.uid)).data.nombreClave == clave;
+      }
+
+      // Alumno que pide volver a entrar desde otro equipo
+      match /solicitudes/{uid} {
+        allow read, delete: if duenoDe(E);
+        allow create, update: if conectado() && soyYo(uid)
+          && request.resource.data.keys().hasOnly(['nombre', 'nombreClave', 't'])
+          && request.resource.data.nombre is string
+          && request.resource.data.nombre.size() <= 80
+          && request.resource.data.t == request.time;
+      }
+
+      match /intentos/{uid} {
+        allow read, write: if duenoDe(E);
+        allow get: if conectado() && soyYo(uid);
+
+        // Al entrar: con el examen abierto, su propio nombre reservado y todo a cero
+        allow create: if conectado() && soyYo(uid)
+          && publico(E).abierto == true
+          && request.resource.data.semilla == uid
+          && request.resource.data.estado == 'en_curso'
+          && request.resource.data.inicio == null
+          && request.resource.data.duracion == publico(E).duracion
+          && request.resource.data.minutosExtra == 0
+          && request.resource.data.salidas == 0
+          && request.resource.data.baseSalidas == 0
+          && request.resource.data.respuestas.size() == 0
+          && request.resource.data.notasManual.size() == 0
+          && request.resource.data.creado == request.time
+          && request.resource.data.nombre is string
+          && request.resource.data.nombre.size() >= 3
+          && request.resource.data.nombre.size() <= 80
+          && request.resource.data.keys().hasOnly(['nombre', 'nombreClave', 'semilla', 'estado', 'creado', 'inicio', 'duracion',
+               'minutosExtra', 'orden', 'respuestas', 'salidas', 'baseSalidas', 'ultimaIncidencia', 'ultimaSenal',
+               'entregadoEn', 'motivoEntrega', 'notasManual', 'navegador'])
+          && getAfter(/databases/$(database)/documents/publico/$(E)/nombres/$(request.resource.data.nombreClave)).data.uid == uid;
+
+        // Mientras hace el examen: solo estos campos, y nunca su tiempo, su nota ni sus salidas permitidas
+        allow update: if conectado() && soyYo(uid)
+          && resource.data.estado != 'entregado'
+          && cambia().hasOnly(['respuestas', 'inicio', 'salidas', 'estado', 'bloqueadoPor', 'ultimaSenal',
+               'ultimaIncidencia', 'entregadoEn', 'motivoEntrega', 'posicion'])
+          && inicioValido()
+          && salidasValidas()
+          && estadoValido()
+          && respuestasValidas()
+          && (!cambia().hasAny(['ultimaSenal']) || request.resource.data.ultimaSenal == request.time);
+
+        function limite() {
+          return resource.data.inicio + duration.value((resource.data.duracion + resource.data.minutosExtra) * 60 + 60, 's');
+        }
+
+        // Empieza una sola vez, con la hora de Firebase
+        function inicioValido() {
+          return !cambia().hasAny(['inicio'])
+            || (resource.data.inicio == null && request.resource.data.inicio == request.time && resource.data.estado == 'en_curso');
+        }
+
+        // Las salidas solo suben de una en una
+        function salidasValidas() {
+          return !cambia().hasAny(['salidas']) || request.resource.data.salidas == resource.data.salidas + 1;
+        }
+
+        // Puede bloquearse (por salir) o entregar; desbloquearse no
+        function estadoValido() {
+          return !cambia().hasAny(['estado', 'bloqueadoPor', 'entregadoEn', 'motivoEntrega'])
+            || (request.resource.data.estado == 'bloqueado' && resource.data.estado == 'en_curso' && request.resource.data.bloqueadoPor == 'automatico')
+            || (request.resource.data.estado == 'entregado' && resource.data.estado == 'en_curso' && resource.data.inicio != null
+                && request.resource.data.entregadoEn == request.time);
+        }
+
+        // Responder solo con el examen en curso y dentro del tiempo (con un minuto de margen)
+        function respuestasValidas() {
+          return !cambia().hasAny(['respuestas'])
+            || (resource.data.estado == 'en_curso' && resource.data.inicio != null && request.time < limite());
+        }
+
+        match /incidencias/{id} {
+          allow read, write: if duenoDe(E);
+          allow create: if conectado() && soyYo(uid)
+            && request.resource.data.keys().hasOnly(['t', 'tipo', 'detalle'])
+            && request.resource.data.t == request.time
+            && request.resource.data.tipo in ['inicio', 'salida', 'regreso', 'copiar', 'pegar', 'menu', 'imprimir', 'bloqueo', 'entrega']
+            && request.resource.data.detalle is string
+            && request.resource.data.detalle.size() <= 300;
+        }
+      }
+    }
+  }
+}
